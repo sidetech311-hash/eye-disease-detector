@@ -1,0 +1,16 @@
+tensorflow>=2.15.0
+flask
+fastapi
+uvicorn
+numpy
+pillow
+seaborn
+matplotlib
+scikit-learn
+gradio
+requests
+python-multipart
+streamlit
+fpdf
+opencv-python
+mediapipe

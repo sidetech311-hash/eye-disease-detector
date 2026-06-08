@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+temp_*
+cam_*
+*.h5
+*.keras
+# We keep requirements.txt and the code, but models are too large for standard GitHub
