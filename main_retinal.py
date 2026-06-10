@@ -12,13 +12,10 @@ import os
 
 import cv2
 from gradcam_utils import make_gradcam_heatmap, save_and_display_gradcam
+from model_loader import download_model_if_missing
 
-# --- LOAD MODEL (v3) ---
-MODEL_PATH = 'retinal_final_boss.h5'
-if not os.path.exists(MODEL_PATH):
-    MODEL_PATH = 'retinal_disease_model_v2.h5'
-if not os.path.exists(MODEL_PATH):
-    MODEL_PATH = 'retinal_disease_model.h5'
+# --- AUTO-DOWNLOAD & LOAD MODEL ---
+MODEL_PATH = download_model_if_missing()
 
 try:
     # Load without compiling to avoid custom loss requirement
