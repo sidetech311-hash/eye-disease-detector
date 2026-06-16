@@ -1,14 +1,8 @@
-tensorflow
-fastapi
-uvicorn
+tensorflow-cpu
 numpy<2.0.0
 pillow
-seaborn
-matplotlib
-scikit-learn
-requests
-python-multipart
+pandas
 streamlit
 fpdf
 opencv-python-headless
-mediapipe
+requests
