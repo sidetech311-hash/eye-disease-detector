@@ -54,18 +54,28 @@ MODEL_URL = "https://www.dropbox.com/scl/fi/YOUR_LINK_HERE/retinal_final_boss.h5
 
 @st.cache_resource
 def load_ai_model():
-    if not os.path.exists(MODEL_PATH):
+    if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 1000:
+        st.info("📡 AI Brain not found or corrupted. Attempting to download...")
         try:
             r = requests.get(MODEL_URL, stream=True)
+            r.raise_for_status()
             with open(MODEL_PATH, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
-        except: pass
-    if os.path.exists(MODEL_PATH):
+            st.success("✅ AI Brain downloaded successfully!")
+        except Exception as e:
+            st.error(f"❌ Model download failed: {e}. Please verify your Dropbox link in the code.")
+            return None, []
+    try:
         model = load_model(MODEL_PATH, compile=False)
-        with open('class_names.json', 'r') as f:
+        # Use absolute path for class names to avoid confusion
+        c_path = os.path.join(os.path.dirname(__file__), '..', 'class_names.json')
+        if not os.path.exists(c_path): c_path = 'class_names.json'
+        with open(c_path, 'r') as f:
             classes = json.load(f)
         return model, classes
-    return None, []
+    except Exception as e:
+        st.error(f"❌ OSError: The model file is unreadable. This happens if the download was interrupted. Please restart the app. Error: {e}")
+        return None, []
 
 def ben_graham_preprocess(img_bytes):
     nparr = np.frombuffer(img_bytes, np.uint8)
