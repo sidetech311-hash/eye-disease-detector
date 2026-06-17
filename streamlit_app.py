@@ -50,6 +50,9 @@ def save_screening(name, condition, confidence):
     conn.close()
 
 # --- 🧠 AI LOGIC (ROBUST VERSION) ---
+MODEL_PATH = "retinal_final_boss.h5"
+MODEL_URL = "https://www.dropbox.com/scl/fi/ruipg8kbuu435c0l73rfp/retinal_disease_model_v2.h5?rlkey=alk3qd9neodv1dehflhej0fcy&st=48evd1oe&dl=1"
+
 @st.cache_resource
 def load_ai_model():
     # If file is too small (placeholder/error page), delete it
@@ -57,8 +60,18 @@ def load_ai_model():
         os.remove(MODEL_PATH)
 
     if not os.path.exists(MODEL_PATH):
-        st.warning("⚠️ AI Brain (Model) is not uploaded yet. App is running in 'UI Preview Mode'.")
-        return None, ["Cataract", "Diabetes", "Glaucoma", "Hypertension", "Myopia", "Normal", "Others", "Age Degeneration"]
+        st.info("📡 AI Brain not found. Downloading from high-speed medical cloud...")
+        try:
+            r = requests.get(MODEL_URL, stream=True)
+            r.raise_for_status()
+            with open(MODEL_PATH, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            st.success("✅ AI Brain downloaded successfully!")
+        except Exception as e:
+            st.error(f"❌ Download failed: {e}")
+            return None, ["Cataract", "Diabetes", "Glaucoma", "Hypertension", "Myopia", "Normal", "Others", "Age Degeneration"]
 
     try:
         model = load_model(MODEL_PATH, compile=False)
