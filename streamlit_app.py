@@ -1,7 +1,13 @@
 import streamlit as st
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import load_model
+# Use tf_keras for better compatibility with .h5 models
+try:
+    import tf_keras as keras
+except ImportError:
+    from tensorflow import keras
+
+from keras.models import load_model
 import cv2
 import json
 import os
