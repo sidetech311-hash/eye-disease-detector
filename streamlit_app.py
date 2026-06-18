@@ -29,58 +29,16 @@ LANG = {
 
 st.set_page_config(page_title="EyeCare AI Pro", layout="wide", page_icon="👁️")
 
-# --- 💅 PROFESSIONAL STYLING ---
+# --- 💅 STYLING ---
 st.markdown("""
     <style>
-    /* Main Theme Colors */
-    :root {
-        --primary: #1a73e8;
-        --secondary: #0d47a1;
-        --background: #f8f9fa;
-    }
+    :root { --primary: #1a73e8; --secondary: #0d47a1; --background: #f8f9fa; }
     .main { background-color: var(--background); }
-
-    /* Header Styling */
-    .main-header {
-        font-family: 'Helvetica Neue', sans-serif;
-        color: var(--secondary);
-        font-weight: 700;
-        border-bottom: 2px solid var(--primary);
-        padding-bottom: 10px;
-        margin-bottom: 25px;
-    }
-
-    /* Circular Scanner Style for Camera */
-    [data-testid="stCameraInput"] {
-        border: 5px solid var(--primary);
-        border-radius: 50%;
-        overflow: hidden;
-        width: 350px !important;
-        height: 350px !important;
-        margin: 0 auto;
-        box-shadow: 0 10px 30px rgba(26, 115, 232, 0.3);
-        transition: all 0.3s ease;
-        /* UN-INVERT CAMERA FEED */
-        transform: scaleX(-1);
-    }
-    [data-testid="stCameraInput"]:hover {
-        transform: scale(1.02) scaleX(-1);
-        box-shadow: 0 15px 40px rgba(26, 115, 232, 0.5);
-    }
-
-    /* Metric Card Styling */
-    .stMetric {
-        background: white;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border-left: 8px solid var(--primary);
-    }
-
-    /* Professional Sidebar */
-    [data-testid="stSidebar"] {
-        background-image: linear-gradient(#ffffff, #e3f2fd);
-    }
+    .main-header { font-family: 'Helvetica Neue', sans-serif; color: var(--secondary); font-weight: 700; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 25px; }
+    [data-testid="stCameraInput"] { border: 5px solid var(--primary); border-radius: 50%; overflow: hidden; width: 350px !important; height: 350px !important; margin: 0 auto; box-shadow: 0 10px 30px rgba(26, 115, 232, 0.3); transition: all 0.3s ease; transform: scaleX(-1); }
+    [data-testid="stCameraInput"]:hover { transform: scale(1.02) scaleX(-1); box-shadow: 0 15px 40px rgba(26, 115, 232, 0.5); }
+    .stMetric { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 8px solid var(--primary); }
+    [data-testid="stSidebar"] { background-image: linear-gradient(#ffffff, #e3f2fd); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -117,28 +75,21 @@ def load_clinical_brain():
             return None, [], None
 
     try:
-        # Check for class names first
+        # Resolve class names path
         c_path = 'class_names.json'
-        if not os.path.exists(c_path):
-            c_path = os.path.join(os.path.dirname(__file__), '..', 'class_names.json')
-
-        if not os.path.exists(c_path):
-            st.error("❌ 'class_names.json' not found in root or ui/ folder.")
-            return None, [], None
-
-        with open(c_path, 'r') as f:
-            classes = json.load(f)
+        if not os.path.exists(c_path): c_path = os.path.join(os.path.dirname(__file__), '..', 'class_names.json')
+        if not os.path.exists(c_path): return None, [], None
+        with open(c_path, 'r') as f: classes = json.load(f)
 
         model = load_model(MODEL_PATH, compile=False)
 
-        # Pre-build Grad-CAM model for speed
+        # Robust Grad-CAM model building
         target_layer = None
         for layer in reversed(model.layers):
-            if isinstance(layer, tf.keras.Model):
-                for sub_layer in reversed(layer.layers):
-                    if len(sub_layer.output_shape) == 4: target_layer = sub_layer; break
-            elif len(layer.output_shape) == 4: target_layer = layer
-            if target_layer: break
+            # Only pick top-level layers to avoid "Graph Disconnected" error
+            if len(layer.output_shape) == 4:
+                target_layer = layer
+                break
 
         if target_layer:
             grad_model = tf.keras.models.Model(model.inputs, [target_layer.output, model.output])
@@ -150,45 +101,12 @@ def load_clinical_brain():
         st.error(f"❌ Brain Load Error: {e}")
         return None, [], None
 
-# Load Cascades once at start
+# Load Cascades once
 @st.cache_resource
 def load_cascades():
     f = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     e = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
     return f, e
-
-def get_gradcam(img_bytes, grad_model, preds_val=None, conv_output=None):
-    try:
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        orig = cv2.resize(orig, (224, 224))
-
-        if conv_output is None or preds_val is None:
-            input_arr = tf.keras.applications.efficientnet.preprocess_input(orig.astype(np.float32))
-            with tf.GradientTape() as tape:
-                conv, preds = grad_model(np.expand_dims(input_arr, 0))
-                class_idx = np.argmax(preds[0])
-                loss = preds[:, class_idx]
-        else:
-            # We already have these from a single pass
-            conv = conv_output
-            preds = preds_val
-            class_idx = np.argmax(preds[0])
-            loss = preds[:, class_idx]
-            # We still need the tape if we want gradients, but if we want it FAST
-            # we should have run the tape in the main prediction block.
-            # Let's just do a single pass there.
-            return orig # Fallback if logic gets complex
-
-        grads = tape.gradient(loss, conv)
-        pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
-        heatmap = conv[0] @ pooled[..., tf.newaxis]
-        heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
-        heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
-        heatmap_color = cv2.resize(heatmap_color, (224, 224))
-        return cv2.addWeighted(orig, 0.6, heatmap_color, 0.4, 0)
-    except:
-        return cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224,224))
 
 def get_pd(img_bytes, face_cascade, eye_cascade):
     try:
@@ -198,41 +116,27 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
         gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
         if len(faces) == 0: return None, None
-
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
-
-        mask = np.zeros_like(img_res)
-        center = (x + w//2, y + h//2)
-        radius = int(max(w, h) * 0.6)
-        cv2.circle(mask, center, radius, (255, 255, 255), -1)
-        circular_face = cv2.bitwise_and(img_res, mask)
+        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.6)
+        cv2.circle(mask, center, radius, (255, 255, 255), -1); circular_face = cv2.bitwise_and(img_res, mask)
         cv2.circle(circular_face, center, radius, (232, 115, 26), 5)
-
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
-
         if len(eyes) < 2: return None, circular_face
-
         eyes = sorted(eyes, key=lambda e: e[0])
         e1, e2 = eyes[0], eyes[1]
         eye_dist_px = abs((e1[0] + e1[2]/2) - (e2[0] + e2[2]/2))
-        pd = round((eye_dist_px / w) * 145, 1)
-        return pd, circular_face
-    except Exception as e:
-        return None, None
+        return round((eye_dist_px / w) * 145, 1), circular_face
+    except: return None, None
 
 def is_retinal_scan(img_bytes):
-    # Detects if a clear, large human face is present (to block selfies in the eye scanner)
     nparr = np.frombuffer(img_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    # Detect faces that take up at least 20% of the image height
     faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(int(img.shape[0]*0.2), int(img.shape[0]*0.2)))
-    # If a significant face is detected, it's a selfie, not a retinal scan
     return len(faces) == 0
 
 # --- 🚀 UI LAUNCH ---
@@ -253,39 +157,36 @@ if t['hub'] in menu:
         method = st.radio("Input Method", ["Upload Scan", "Live Camera"], horizontal=True)
         file = st.file_uploader(t['upload'], type=['jpg','png','jpeg']) if method == "Upload Scan" else st.camera_input("Scan Retina")
         if file and st.button(t['process'], use_container_width=True):
-            if model is None or grad_model is None:
+            if model is None:
                 st.error("🧠 AI Brain is still loading or offline. Please refresh in a moment.")
             else:
                 img_bytes = file.getvalue()
                 if not is_retinal_scan(img_bytes):
-                    st.error("❌ **Invalid Input:** Facial features detected. This model only analyzes **Internal Retinal Scans**. Please upload a fundus photo or use the Optical Assistant.")
+                    st.error("❌ **Invalid Input:** Facial features detected. This model only analyzes **Internal Retinal Scans**.")
                 else:
                     with st.spinner("Analyzing..."):
-                        # Single-pass Diagnosis + Heatmap
                         nparr = np.frombuffer(img_bytes, np.uint8)
-                        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                        orig_res = cv2.resize(orig, (224, 224))
+                        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR); orig_res = cv2.resize(orig, (224, 224))
                         input_arr = tf.keras.applications.efficientnet.preprocess_input(orig_res.astype(np.float32))
                         input_batch = np.expand_dims(input_arr, 0)
 
-                        with tf.GradientTape() as tape:
-                            conv_output, preds = grad_model(input_batch)
-                            idx = np.argmax(preds[0])
-                            loss = preds[:, idx]
+                        if grad_model:
+                            with tf.GradientTape() as tape:
+                                conv_output, preds = grad_model(input_batch)
+                                idx = np.argmax(preds[0]); loss = preds[:, idx]
+                            grads = tape.gradient(loss, conv_output)
+                            pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
+                            heatmap = conv_output[0] @ pooled[..., tf.newaxis]
+                            heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
+                            heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
+                            heatmap_color = cv2.resize(heatmap_color, (224, 224))
+                            cam = cv2.addWeighted(orig_res, 0.6, heatmap_color, 0.4, 0)
+                        else:
+                            # Fallback if grad_model failed to build
+                            preds = model.predict(input_batch)
+                            idx = np.argmax(preds[0]); cam = orig_res
 
-                        # Calculate Diagnosis
-                        conf = float(preds[0][idx])
-                        cond = class_names[idx].title()
-
-                        # Calculate Heatmap (Fast pass)
-                        grads = tape.gradient(loss, conv_output)
-                        pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
-                        heatmap = conv_output[0] @ pooled[..., tf.newaxis]
-                        heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
-                        heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
-                        heatmap_color = cv2.resize(heatmap_color, (224, 224))
-                        cam = cv2.addWeighted(orig_res, 0.6, heatmap_color, 0.4, 0)
-
+                        conf = float(preds[0][idx]); cond = class_names[idx].title()
                         st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "pid": p_name}
                         save_case(p_name, cond, conf)
     with col2:
@@ -302,16 +203,14 @@ if t['hub'] in menu:
 elif t['portal'] in menu:
     st.markdown(f"<h1 class='main-header'>📊 {t['portal']}</h1>", unsafe_allow_html=True)
     if st.sidebar.text_input("Admin Key", type="password") == "doctor123":
-        st.subheader("💰 Revenue & ROI Calculator")
-        col1, col2 = st.columns(2)
-        patients = col1.number_input("Average Patients per Month", 10, 5000, 100)
-        cost_manual = col1.number_input("Cost of Manual Screening ($)", 5, 200, 50)
-        cost_ai = col1.number_input("Monthly AI Subscription Cost ($)", 50, 1000, 200)
+        patients = st.sidebar.number_input("Average Patients/Month", 10, 5000, 100)
+        cost_manual = st.sidebar.number_input("Manual Cost ($)", 5, 200, 50)
+        cost_ai = st.sidebar.number_input("AI Subscription ($)", 50, 1000, 200)
         savings = (patients * cost_manual) - cost_ai
-        col2.metric("Monthly Savings", f"${savings:,.2f}")
+        col1, col2 = st.columns(2)
+        col1.metric("Monthly Savings", f"${savings:,.2f}")
         col2.metric("Annual Profit", f"${savings*12:,.2f}")
         st.markdown("---")
-        st.subheader("📋 Patient Screening Logs")
         conn = sqlite3.connect('clinical_records.db')
         st.dataframe(pd.read_sql('SELECT * FROM screenings ORDER BY id DESC', conn), use_container_width=True)
     else: st.warning("Authentication required.")
@@ -325,18 +224,14 @@ elif t['opt'] in menu:
         if file:
             with st.spinner("Analyzing biometric data..."):
                 pd_val, scan_img = get_pd(file.getvalue(), face_cascade, eye_cascade)
-                if scan_img is not None:
-                    st.session_state['pd'], st.session_state['scan_img'] = pd_val, scan_img
-                else:
-                    st.error("Capture Failed: Please look directly into the camera.")
+                if scan_img is not None: st.session_state['pd'], st.session_state['scan_img'] = pd_val, scan_img
+                else: st.error("Capture Failed: Please look directly into the camera.")
     with col2:
         if 'scan_img' in st.session_state:
             st.image(st.session_state['scan_img'], use_container_width=True)
             if 'pd' in st.session_state and st.session_state['pd'] is not None:
                 st.metric("Detected PD", f"{st.session_state['pd']} mm")
                 st.info("Recommendation: Geometric or Aviator frames.")
-            elif 'pd' in st.session_state:
-                st.warning("Face found, but could not detect both eyes for PD calculation. Please ensure good lighting.")
 
 elif "Partner" in menu:
     st.markdown("<h1 class='main-header'>🤝 Clinical Partner Registration</h1>", unsafe_allow_html=True)
@@ -348,9 +243,7 @@ elif "Partner" in menu:
 elif "Feedback" in menu:
     st.markdown("<h1 class='main-header'>💬 User Feedback</h1>", unsafe_allow_html=True)
     with st.form("feedback_form"):
-        name = st.text_input("Name")
-        rating = st.slider("Rating", 1, 10, 8)
-        comment = st.text_area("Feedback")
+        name = st.text_input("Name"); rating = st.slider("Rating", 1, 10, 8); comment = st.text_area("Feedback")
         if st.form_submit_button("Submit"):
             conn = sqlite3.connect('clinical_records.db'); conn.execute('INSERT INTO feedback (user, rating, comment) VALUES (?,?,?)', (name, rating, comment)); conn.commit(); st.success("Thank you!")
 
