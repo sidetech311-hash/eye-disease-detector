@@ -169,13 +169,14 @@ def get_pd(img_bytes):
     except: return None, None
 
 def is_retinal_scan(img_bytes):
-    # Uses a simple heuristic to detect if the image is a face or eye scan
+    # Detects if a clear, large human face is present (to block selfies in the eye scanner)
     nparr = np.frombuffer(img_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-    # If we detect a human face, it's NOT a retinal scan
+    # Detect faces that take up at least 20% of the image height
+    faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(int(img.shape[0]*0.2), int(img.shape[0]*0.2)))
+    # If a significant face is detected, it's a selfie, not a retinal scan
     return len(faces) == 0
 
 # --- 🚀 UI LAUNCH ---
