@@ -143,20 +143,52 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
         gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-        # Use pre-loaded face_cascade
+
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
         if len(faces) == 0: return None, None
+
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
-        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.6)
-        cv2.circle(mask, center, radius, (255, 255, 255), -1); circular_face = cv2.bitwise_and(img_res, mask)
-        cv2.circle(circular_face, center, radius, (232, 115, 26), 5)
+
+        # UI Overlay: Facial Recognition Simulation
+        overlay = img_res.copy()
+        # Draw bounding box with corner accents
+        c_len = 30
+        cv2.rectangle(overlay, (x, y), (x+w, y+h), (0, 255, 0), 1)
+        # Corners
+        cv2.line(overlay, (x, y), (x+c_len, y), (0, 255, 0), 4)
+        cv2.line(overlay, (x, y), (x, y+c_len), (0, 255, 0), 4)
+        cv2.line(overlay, (x+w-c_len, y), (x+w, y), (0, 255, 0), 4)
+        cv2.line(overlay, (x+w, y), (x+w, y+c_len), (0, 255, 0), 4)
+
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
-        if len(eyes) < 2: return None, circular_face
+
+        if len(eyes) < 2: return None, overlay
+
         eyes = sorted(eyes, key=lambda e: e[0])
         e1, e2 = eyes[0], eyes[1]
-        eye_dist_px = abs((e1[0] + e1[2]/2) - (e2[0] + e2[2]/2))
-        return round((eye_dist_px / w) * 145, 1), circular_face
+
+        # Calculate pupil centers (approx)
+        p1 = (x + e1[0] + e1[2]//2, y + e1[1] + e1[3]//2)
+        p2 = (x + e2[0] + e2[2]//2, y + e2[1] + e2[3]//2)
+
+        # Draw landmarks
+        cv2.circle(overlay, p1, 5, (0, 0, 255), -1) # Left pupil
+        cv2.circle(overlay, p2, 5, (0, 0, 255), -1) # Right pupil
+        cv2.line(overlay, p1, p2, (255, 255, 0), 2) # PD line
+
+        eye_dist_px = abs(p1[0] - p2[0])
+        pd_mm = round((eye_dist_px / w) * 145, 1)
+
+        # Face mask logic (Circular)
+        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.6)
+        cv2.circle(mask, center, radius, (255, 255, 255), -1); circular_face = cv2.bitwise_and(overlay, mask)
+        cv2.circle(circular_face, center, radius, (232, 115, 26), 3)
+
+        # Data Overlay
+        cv2.putText(circular_face, f"ID: BIO-{hashlib.sha1(os.urandom(2)).hexdigest()[:4].upper()}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        return pd_mm, circular_face
     except: return None, None
 
 def is_retinal_scan(img_bytes, face_cascade):
