@@ -84,16 +84,18 @@ def load_clinical_brain():
         model = load_model(MODEL_PATH, compile=False)
 
         # Robust Grad-CAM model building
-        target_layer = None
-        for layer in reversed(model.layers):
-            # Only pick top-level layers to avoid "Graph Disconnected" error
-            if len(layer.output_shape) == 4:
-                target_layer = layer
-                break
+        grad_model = None
+        try:
+            target_layer = None
+            for layer in reversed(model.layers):
+                if len(layer.output_shape) == 4:
+                    target_layer = layer
+                    break
 
-        if target_layer:
-            grad_model = tf.keras.models.Model(model.inputs, [target_layer.output, model.output])
-        else:
+            if target_layer:
+                grad_model = tf.keras.models.Model(model.inputs, [target_layer.output, model.output])
+        except Exception as grad_err:
+            st.sidebar.warning(f"⚠️ Explainability module limited: {grad_err}")
             grad_model = None
 
         return model, classes, grad_model
