@@ -83,21 +83,24 @@ def load_clinical_brain():
 
         model = load_model(MODEL_PATH, compile=False)
 
-        # Robust Grad-CAM model building
+        # Robust Grad-CAM model building (Nested Model Support)
         grad_model = None
         try:
-            # Search for the base feature extractor layer (usually the Model layer in EfficientNet)
             target_layer = None
+            # Search for the last 4D output layer (the feature map)
             for layer in reversed(model.layers):
-                # We look for the last layer that outputs a 4D tensor (the feature map)
-                if len(layer.output_shape) == 4:
+                if hasattr(layer, 'layers'): # Check if it's a sub-model (like EfficientNet)
+                    for sub_layer in reversed(layer.layers):
+                        if len(sub_layer.output_shape) == 4:
+                            target_layer = sub_layer; break
+                elif len(layer.output_shape) == 4:
                     target_layer = layer
-                    break
+                if target_layer: break
 
             if target_layer:
-                # We use the model's actual input and output tensors to ensure graph connectivity
+                # Build the grad_model using the functional API's connectivity
                 grad_model = tf.keras.models.Model(model.input, [target_layer.output, model.output])
-        except Exception as grad_err:
+        except Exception:
             st.sidebar.warning("⚠️ Explainability module running in compatibility mode.")
             grad_model = None
 
@@ -121,6 +124,7 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
         gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
+        # Use pre-loaded face_cascade
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
         if len(faces) == 0: return None, None
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
@@ -136,12 +140,13 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         return round((eye_dist_px / w) * 145, 1), circular_face
     except: return None, None
 
-def is_retinal_scan(img_bytes):
+def is_retinal_scan(img_bytes, face_cascade):
+    # Detects if a clear human face is present (Stricter threshold to avoid false positives)
     nparr = np.frombuffer(img_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(int(img.shape[0]*0.2), int(img.shape[0]*0.2)))
+    # Stricter: 12 neighbors instead of 5
+    faces = face_cascade.detectMultiScale(gray, 1.1, 12, minSize=(int(img.shape[0]*0.2), int(img.shape[0]*0.2)))
     return len(faces) == 0
 
 # --- 🚀 UI LAUNCH ---
@@ -166,7 +171,7 @@ if t['hub'] in menu:
                 st.error("🧠 AI Brain is still loading or offline. Please refresh in a moment.")
             else:
                 img_bytes = file.getvalue()
-                if not is_retinal_scan(img_bytes):
+                if not is_retinal_scan(img_bytes, face_cascade):
                     st.error("❌ **Invalid Input:** Facial features detected. This model only analyzes **Internal Retinal Scans**.")
                 else:
                     with st.spinner("Analyzing..."):
