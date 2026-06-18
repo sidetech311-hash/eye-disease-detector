@@ -200,13 +200,13 @@ if t['hub'] in menu:
                 st.error("❌ **Invalid Input:** Facial features detected. This model only analyzes **Internal Retinal Scans**. Please upload a fundus photo or use the Optical Assistant.")
             else:
                 with st.spinner("Analyzing..."):
-                img = cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224, 224))
-                prep = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
-                preds = model.predict(np.expand_dims(prep, 0))
-                idx = np.argmax(preds[0]); conf = float(preds[0][idx]); cond = class_names[idx].title()
-                cam = get_gradcam(img_bytes, model)
-                st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "pid": p_name}
-                save_case(p_name, cond, conf)
+                    img = cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224, 224))
+                    prep = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
+                    preds = model.predict(np.expand_dims(prep, 0))
+                    idx = np.argmax(preds[0]); conf = float(preds[0][idx]); cond = class_names[idx].title()
+                    cam = get_gradcam(img_bytes, model)
+                    st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "pid": p_name}
+                    save_case(p_name, cond, conf)
     with col2:
         if 'res' in st.session_state:
             r = st.session_state['res']
