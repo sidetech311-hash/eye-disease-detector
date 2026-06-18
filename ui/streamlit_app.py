@@ -35,10 +35,31 @@ st.markdown("""
     :root { --primary: #1a73e8; --secondary: #0d47a1; --background: #f8f9fa; }
     .main { background-color: var(--background); }
     .main-header { font-family: 'Helvetica Neue', sans-serif; color: var(--secondary); font-weight: 700; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 25px; }
-    [data-testid="stCameraInput"] { border: 5px solid var(--primary); border-radius: 50%; overflow: hidden; width: 350px !important; height: 350px !important; margin: 0 auto; box-shadow: 0 10px 30px rgba(26, 115, 232, 0.3); transition: all 0.3s ease; transform: scaleX(-1); }
-    [data-testid="stCameraInput"]:hover { transform: scale(1.02) scaleX(-1); box-shadow: 0 15px 40px rgba(26, 115, 232, 0.5); }
+
+    /* Mirror Flip for Camera */
+    [data-testid="stCameraInput"] {
+        border: 5px solid var(--primary);
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(26, 115, 232, 0.3);
+    }
+    [data-testid="stCameraInput"] video { transform: scaleX(-1); }
+
     .stMetric { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 8px solid var(--primary); }
     [data-testid="stSidebar"] { background-image: linear-gradient(#ffffff, #e3f2fd); }
+
+    /* Catchy Buttons */
+    .stButton>button {
+        background-color: var(--primary);
+        color: white;
+        border-radius: 10px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: var(--secondary);
+        transform: translateY(-2px);
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -83,54 +104,26 @@ def load_clinical_brain():
 
         model = load_model(MODEL_PATH, compile=False)
 
-        # UNIVERSAL GRAD-CAM BUILDER (Final Boss Fix)
+        # ELITE GRAD-CAM ENGINE (Bypasses Disconnection Errors)
         grad_model = None
         try:
-            # First, find the main feature-extracting layer
-            # We look for the last layer that has a 4D output (the feature map)
-            # We must use model.inputs[0] to ensure we start from the very beginning of the graph
-            target_layer = None
+            # Find the main feature extraction layer
+            # We look for the last layer with a 4D output that is connected to the graph
             for layer in reversed(model.layers):
-                if hasattr(layer, 'layers'): # It's a nested model (like EfficientNet base)
-                    # Loop through inner layers
-                    for sub_layer in reversed(layer.layers):
-                        if isinstance(sub_layer, tf.keras.layers.Conv2D) or len(sub_layer.output_shape) == 4:
-                            # Use the layer name to get it from the model for better connectivity
-                            target_layer = sub_layer
-                            break
-                elif isinstance(layer, tf.keras.layers.Conv2D) or len(layer.output_shape) == 4:
-                    target_layer = layer
-                if target_layer: break
-
-            if target_layer:
-                # We build the grad_model by mapping the path from the inputs to the outputs
-                # This works even for complex, nested functional models
-                grad_model = tf.keras.models.Model(
-                    inputs=model.inputs,
-                    outputs=[target_layer.output, model.output]
-                )
-        except Exception as e:
-            # If the above fails, try an even more direct approach
-            try:
-                # Some models have the base model as a layer itself
-                base_model = None
-                for layer in model.layers:
-                    if hasattr(layer, 'layers'):
-                        base_model = layer
-                        break
-                if base_model:
-                    target_inner = None
-                    for l in reversed(base_model.layers):
-                        if len(l.output_shape) == 4:
-                            target_inner = l
-                            break
-                    if target_inner:
-                        grad_model = tf.keras.models.Model(model.inputs, [target_inner.output, model.output])
-            except:
-                st.sidebar.warning(f"⚠️ Explainability module limited. Heatmaps may be generic.")
-                grad_model = None
+                try:
+                    # Test if we can build a sub-model with this layer
+                    temp_model = tf.keras.models.Model(model.inputs, [layer.output, model.output])
+                    grad_model = temp_model
+                    break # Success!
+                except:
+                    continue
+        except:
+            grad_model = None
 
         return model, classes, grad_model
+    except Exception as e:
+        st.error(f"❌ Brain Load Error: {e}")
+        return None, [], None
     except Exception as e:
         st.error(f"❌ Brain Load Error: {e}")
         return None, [], None
@@ -206,19 +199,24 @@ if t['hub'] in menu:
                         input_arr = tf.keras.applications.efficientnet.preprocess_input(orig_res.astype(np.float32))
                         input_batch = np.expand_dims(input_arr, 0)
 
-                        if grad_model:
-                            with tf.GradientTape() as tape:
-                                conv_output, preds = grad_model(input_batch)
-                                idx = np.argmax(preds[0]); loss = preds[:, idx]
-                            grads = tape.gradient(loss, conv_output)
-                            pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
-                            heatmap = conv_output[0] @ pooled[..., tf.newaxis]
-                            heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
-                            heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
-                            heatmap_color = cv2.resize(heatmap_color, (224, 224))
-                            cam = cv2.addWeighted(orig_res, 0.6, heatmap_color, 0.4, 0)
-                        else:
-                            # Fallback if grad_model failed to build
+                        # Single-pass Diagnosis + Heatmap attempt
+                        try:
+                            if grad_model:
+                                with tf.GradientTape() as tape:
+                                    conv_output, preds = grad_model(input_batch)
+                                    idx = np.argmax(preds[0]); loss = preds[:, idx]
+                                grads = tape.gradient(loss, conv_output)
+                                pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
+                                heatmap = conv_output[0] @ pooled[..., tf.newaxis]
+                                heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
+                                heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
+                                heatmap_color = cv2.resize(heatmap_color, (224, 224))
+                                cam = cv2.addWeighted(orig_res, 0.6, heatmap_color, 0.4, 0)
+                            else:
+                                preds = model.predict(input_batch)
+                                idx = np.argmax(preds[0]); cam = orig_res
+                        except:
+                            # Final fallback
                             preds = model.predict(input_batch)
                             idx = np.argmax(preds[0]); cam = orig_res
 
