@@ -60,9 +60,11 @@ st.markdown("""
         margin: 0 auto;
         box-shadow: 0 10px 30px rgba(26, 115, 232, 0.3);
         transition: all 0.3s ease;
+        /* UN-INVERT CAMERA FEED */
+        transform: scaleX(-1);
     }
     [data-testid="stCameraInput"]:hover {
-        transform: scale(1.02);
+        transform: scale(1.02) scaleX(-1);
         box-shadow: 0 15px 40px rgba(26, 115, 232, 0.5);
     }
 
@@ -166,6 +168,16 @@ def get_pd(img_bytes):
         return round((eye_dist_px / w) * 145, 1), circular_face
     except: return None, None
 
+def is_retinal_scan(img_bytes):
+    # Uses a simple heuristic to detect if the image is a face or eye scan
+    nparr = np.frombuffer(img_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+    # If we detect a human face, it's NOT a retinal scan
+    return len(faces) == 0
+
 # --- 🚀 UI LAUNCH ---
 init_db()
 model, class_names = load_clinical_brain()
@@ -184,7 +196,10 @@ if t['hub'] in menu:
         file = st.file_uploader(t['upload'], type=['jpg','png','jpeg']) if method == "Upload Scan" else st.camera_input("Scan Retina")
         if file and st.button(t['process'], use_container_width=True):
             img_bytes = file.getvalue()
-            with st.spinner("Analyzing..."):
+            if not is_retinal_scan(img_bytes):
+                st.error("❌ **Invalid Input:** Facial features detected. This model only analyzes **Internal Retinal Scans**. Please upload a fundus photo or use the Optical Assistant.")
+            else:
+                with st.spinner("Analyzing..."):
                 img = cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224, 224))
                 prep = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
                 preds = model.predict(np.expand_dims(prep, 0))
