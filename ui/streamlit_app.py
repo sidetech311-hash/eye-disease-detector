@@ -85,36 +85,46 @@ def load_clinical_brain():
     except: return None, []
 
 def get_gradcam(img_bytes, model):
-    nparr = np.frombuffer(img_bytes, np.uint8)
-    orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    orig = cv2.resize(orig, (224, 224))
-    img = cv2.addWeighted(orig, 4, cv2.GaussianBlur(orig, (0,0), 10), -4, 128)
-    input_arr = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
+    try:
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        orig = cv2.resize(orig, (224, 224))
+        img = cv2.addWeighted(orig, 4, cv2.GaussianBlur(orig, (0,0), 10), -4, 128)
+        input_arr = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
 
-    # --- AUTO-FIND LAST CONV LAYER ---
-    last_conv_layer = None
-    for layer in reversed(model.layers):
-        if len(layer.output_shape) == 4:
-            last_conv_layer = layer.name
-            break
+        # FIND THE CONV LAYER (Recursive search for nested models)
+        target_layer = None
+        for layer in reversed(model.layers):
+            if isinstance(layer, tf.keras.Model): # Dig into sub-model
+                for sub_layer in reversed(layer.layers):
+                    if len(sub_layer.output_shape) == 4:
+                        target_layer = sub_layer
+                        break
+            elif len(layer.output_shape) == 4:
+                target_layer = layer
+            if target_layer: break
 
-    if not last_conv_layer:
-        return orig
+        if not target_layer: return orig
 
-    grad_model = tf.keras.models.Model(model.inputs, [model.get_layer(last_conv_layer).output, model.output])
-    with tf.GradientTape() as tape:
-        last_conv, preds = grad_model(np.expand_dims(input_arr, 0))
-        class_channel = preds[:, np.argmax(preds[0])]
+        grad_model = tf.keras.models.Model(model.inputs, [target_layer.output, model.output])
+        with tf.GradientTape() as tape:
+            last_conv, preds = grad_model(np.expand_dims(input_arr, 0))
+            class_channel = preds[:, np.argmax(preds[0])]
 
-    grads = tape.gradient(class_channel, last_conv)
-    pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
-    heatmap = last_conv[0] @ pooled[..., tf.newaxis]
-    heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
+        grads = tape.gradient(class_channel, last_conv)
+        pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
+        heatmap = last_conv[0] @ pooled[..., tf.newaxis]
+        heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
 
-    heatmap_img = np.uint8(255 * heatmap)
-    heatmap_color = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
-    heatmap_color = cv2.resize(heatmap_color, (224, 224))
-    return cv2.addWeighted(orig, 0.6, heatmap_color, 0.4, 0)
+        heatmap_img = np.uint8(255 * heatmap)
+        heatmap_color = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
+        heatmap_color = cv2.resize(heatmap_color, (224, 224))
+        return cv2.addWeighted(orig, 0.6, heatmap_color, 0.4, 0)
+    except:
+        # If Grad-CAM fails, return resized original to prevent app crash
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        return cv2.resize(orig, (224, 224))
 
 # --- 🚀 UI LAUNCH ---
 init_db()
