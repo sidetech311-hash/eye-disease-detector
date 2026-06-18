@@ -92,6 +92,21 @@ def get_gradcam(img_bytes, model):
         return cv2.addWeighted(orig, 0.6, heatmap_color, 0.4, 0)
     except: return cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224,224))
 
+def get_pd(img_bytes):
+    try:
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        if len(faces) == 0: return None
+        x, y, w, h = faces[0]
+        eyes = eye_cascade.detectMultiScale(gray[y:y+h, x:x+w])
+        if len(eyes) < 2: return None
+        return round((abs(eyes[0][0] - eyes[1][0]) / w) * 145, 1)
+    except: return None
+
 # --- 🚀 UI LAUNCH ---
 init_db()
 model, class_names = load_clinical_brain()
@@ -147,6 +162,25 @@ elif menu == t['portal']:
         conn = sqlite3.connect('clinical_records.db')
         st.dataframe(pd.read_sql('SELECT * FROM screenings ORDER BY id DESC', conn), use_container_width=True)
     else: st.warning("Authentication required.")
+
+elif menu == t['opt']:
+    st.title("🕶️ Pupillary Distance & Frame Assistant")
+    col1, col2 = st.columns(2)
+    with col1:
+        method = st.radio("Scan Method", ["Upload Photo", "Live Camera"])
+        file = st.file_uploader("Selfie", type=['jpg','png']) if method == "Upload Photo" else st.camera_input("Take Selfie")
+        if file:
+            img_bytes = file.getvalue()
+            pd_val = get_pd(img_bytes)
+            if pd_val:
+                st.session_state['pd'] = pd_val
+            else:
+                st.error("Face/Eyes not detected. Please ensure high visibility.")
+    with col2:
+        if 'pd' in st.session_state:
+            st.metric("Measured PD", f"{st.session_state['pd']} mm")
+            st.success("Recommendation: Rectangular or Geometric frames.")
+            st.info("Best Shades: Dark Tortoise or Matte Black.")
 
 elif menu == "Partner Registration":
     st.title("🤝 Become a Registered Optical Partner")
