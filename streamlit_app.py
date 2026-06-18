@@ -100,7 +100,7 @@ menu = st.sidebar.radio("Navigation", [t['hub'], t['portal'], t['opt'], "Partner
 
 if menu == t['hub']:
     st.title("👁️ Retinal Diagnostic Suite")
-    p_name = st.text_input(t['name'], "Patient #"+hashlib.md_sha1(os.urandom(4)).hexdigest()[:5])
+    p_name = st.text_input(t['name'], "Patient #"+hashlib.sha1(os.urandom(4)).hexdigest()[:5])
     col1, col2 = st.columns(2)
     with col1:
         file = st.file_uploader(t['upload'], type=['jpg','png','jpeg'])
