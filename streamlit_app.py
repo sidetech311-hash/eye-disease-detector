@@ -96,16 +96,42 @@ def get_pd(img_bytes):
     try:
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        # Load Cascades
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+
+        # Pre-process image for better detection
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-        if len(faces) == 0: return None
+        gray = cv2.equalizeHist(gray) # Normalize lighting
+
+        # Detect Face
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+        if len(faces) == 0:
+            st.warning("No face detected. Please face the camera directly.")
+            return None
+
         x, y, w, h = faces[0]
-        eyes = eye_cascade.detectMultiScale(gray[y:y+h, x:x+w])
-        if len(eyes) < 2: return None
-        return round((abs(eyes[0][0] - eyes[1][0]) / w) * 145, 1)
-    except: return None
+        # Restrict eye search to the upper region of the face (saves time & accuracy)
+        roi_gray = gray[y : y + int(h/2), x : x + w]
+
+        # Detect Eyes
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 10)
+
+        if len(eyes) < 2:
+            st.warning(f"Found {len(eyes)} eye(s). Need both for PD measurement. Try better lighting.")
+            return None
+
+        # Calculate PD using the 145mm face-width heuristic
+        # We sort by X-coordinate to ensure we have left and right eye correctly
+        eyes = sorted(eyes, key=lambda e: e[0])
+        eye_dist_px = abs((eyes[0][0] + eyes[0][2]/2) - (eyes[1][0] + eyes[1][2]/2))
+        pd_mm = (eye_dist_px / w) * 145
+
+        return round(pd_mm, 1)
+    except Exception as e:
+        st.error(f"Optical Engine Error: {e}")
+        return None
 
 # --- 🚀 UI LAUNCH ---
 init_db()
