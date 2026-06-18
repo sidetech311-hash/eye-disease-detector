@@ -253,7 +253,7 @@ if t['hub'] in menu:
         method = st.radio("Input Method", ["Upload Scan", "Live Camera"], horizontal=True)
         file = st.file_uploader(t['upload'], type=['jpg','png','jpeg']) if method == "Upload Scan" else st.camera_input("Scan Retina")
         if file and st.button(t['process'], use_container_width=True):
-            if model is None:
+            if model is None or grad_model is None:
                 st.error("🧠 AI Brain is still loading or offline. Please refresh in a moment.")
             else:
                 img_bytes = file.getvalue()
@@ -261,11 +261,31 @@ if t['hub'] in menu:
                     st.error("❌ **Invalid Input:** Facial features detected. This model only analyzes **Internal Retinal Scans**. Please upload a fundus photo or use the Optical Assistant.")
                 else:
                     with st.spinner("Analyzing..."):
-                        img = cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224, 224))
-                        prep = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
-                        preds = model.predict(np.expand_dims(prep, 0))
-                        idx = np.argmax(preds[0]); conf = float(preds[0][idx]); cond = class_names[idx].title()
-                        cam = get_gradcam(img_bytes, model, grad_model)
+                        # Single-pass Diagnosis + Heatmap
+                        nparr = np.frombuffer(img_bytes, np.uint8)
+                        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        orig_res = cv2.resize(orig, (224, 224))
+                        input_arr = tf.keras.applications.efficientnet.preprocess_input(orig_res.astype(np.float32))
+                        input_batch = np.expand_dims(input_arr, 0)
+
+                        with tf.GradientTape() as tape:
+                            conv_output, preds = grad_model(input_batch)
+                            idx = np.argmax(preds[0])
+                            loss = preds[:, idx]
+
+                        # Calculate Diagnosis
+                        conf = float(preds[0][idx])
+                        cond = class_names[idx].title()
+
+                        # Calculate Heatmap (Fast pass)
+                        grads = tape.gradient(loss, conv_output)
+                        pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
+                        heatmap = conv_output[0] @ pooled[..., tf.newaxis]
+                        heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
+                        heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
+                        heatmap_color = cv2.resize(heatmap_color, (224, 224))
+                        cam = cv2.addWeighted(orig_res, 0.6, heatmap_color, 0.4, 0)
+
                         st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "pid": p_name}
                         save_case(p_name, cond, conf)
     with col2:
