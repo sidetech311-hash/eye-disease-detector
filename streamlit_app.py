@@ -164,8 +164,8 @@ def is_retinal_scan(img_bytes, face_cascade):
     nparr = np.frombuffer(img_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Stricter: 12 neighbors instead of 5
-    faces = face_cascade.detectMultiScale(gray, 1.1, 12, minSize=(int(img.shape[0]*0.2), int(img.shape[0]*0.2)))
+    # Extremely strict: 15 neighbors and larger minSize
+    faces = face_cascade.detectMultiScale(gray, 1.1, 15, minSize=(int(img.shape[0]*0.3), int(img.shape[0]*0.3)))
     return len(faces) == 0
 
 # --- 🚀 UI LAUNCH ---
@@ -190,10 +190,13 @@ if t['hub'] in menu:
                 st.error("🧠 AI Brain is still loading or offline. Please refresh in a moment.")
             else:
                 img_bytes = file.getvalue()
-                if not is_retinal_scan(img_bytes, face_cascade):
-                    st.error("❌ **Invalid Input:** Facial features detected. This model only analyzes **Internal Retinal Scans**.")
-                else:
-                    with st.spinner("Analyzing..."):
+                # Use a soft warning instead of a hard block to prevent false positives
+                is_likely_face = not is_retinal_scan(img_bytes, face_cascade)
+
+                if is_likely_face:
+                    st.warning("⚠️ **Note:** The system detects potential facial features. Please ensure you are uploading an **Internal Retinal Scan** for accurate results.")
+
+                with st.spinner("Analyzing..."):
                         nparr = np.frombuffer(img_bytes, np.uint8)
                         orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR); orig_res = cv2.resize(orig, (224, 224))
                         input_arr = tf.keras.applications.efficientnet.preprocess_input(orig_res.astype(np.float32))
