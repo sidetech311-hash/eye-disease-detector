@@ -28,6 +28,32 @@ LANG = {
 }
 
 st.set_page_config(page_title="EyeCare AI Pro", layout="wide", page_icon="👁️")
+
+# --- 💅 PROFESSIONAL STYLING (Bio-Scanner Feel) ---
+st.markdown("""
+    <style>
+    /* Circular Scanner Style for Camera */
+    [data-testid="stCameraInput"] {
+        border: 4px solid #1a73e8;
+        border-radius: 50%;
+        overflow: hidden;
+        width: 350px !important;
+        height: 350px !important;
+        margin: 0 auto;
+        box-shadow: 0 0 20px rgba(26, 115, 232, 0.4);
+    }
+    [data-testid="stCameraInput"] video {
+        object-fit: cover;
+    }
+    .stMetric {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        border-left: 5px solid #1a73e8;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 MODEL_PATH = "retinal_final_boss.h5"
 MODEL_URL = "https://www.dropbox.com/scl/fi/ruipg8kbuu435c0l73rfp/retinal_disease_model_v2.h5?rlkey=alk3qd9neodv1dehflhej0fcy&st=48evd1oe&dl=1"
 
@@ -98,54 +124,38 @@ def get_pd(img_bytes):
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         # 1. ENHANCED PRE-PROCESSING
-        # Standardize size for detection consistency
         h_orig, w_orig = img.shape[:2]
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
-
-        # Multi-scale Contrast Enhancement (CLAHE)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         gray = clahe.apply(gray)
 
-        # 2. LOAD CASCADES
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
 
-        # 3. DETECT FACE (with fallbacks)
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
+        if len(faces) == 0: faces = face_cascade.detectMultiScale(gray, 1.05, 3)
+        if len(faces) == 0: return None, None
 
-        if len(faces) == 0:
-            # Try with a more sensitive setting
-            faces = face_cascade.detectMultiScale(gray, 1.05, 3)
-
-        if len(faces) == 0:
-            st.warning("Face not detected. Please ensure your face is fully visible and well-lit.")
-            return None
-
-        # Sort by size and take the largest face
         faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
         x, y, w, h = faces[0]
 
-        # 4. DETECT EYES IN ROI
-        # Restrict to upper 60% of the face
+        # CIRCULAR CROP FOR "BIO-SCAN" LOOK
+        mask = np.zeros_like(img_res)
+        center = (x + w//2, y + h//2)
+        radius = int(max(w, h) * 0.6)
+        cv2.circle(mask, center, radius, (255, 255, 255), -1)
+        circular_face = cv2.bitwise_and(img_res, mask)
+
+        # Add a digital "scanning" circle
+        cv2.circle(circular_face, center, radius, (232, 115, 26), 5)
+
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
-
-        # Try multiple passes for eyes
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
+        if len(eyes) < 2: eyes = eye_cascade.detectMultiScale(roi_gray, 1.02, 3)
+        if len(eyes) < 2: return None, circular_face
 
-        if len(eyes) < 2:
-            # More sensitive pass
-            eyes = eye_cascade.detectMultiScale(roi_gray, 1.02, 3)
-
-        if len(eyes) < 2:
-            st.warning("Found only one eye or no eyes. Please face the camera directly without head tilt.")
-            return None
-
-        # Sort by X to get left and right
         eyes = sorted(eyes, key=lambda e: e[0])
-
-        # Filter: If more than 2 eyes found, pick the two that are most likely to be a pair
-        # (similar Y coordinate and size)
         best_pair = (eyes[0], eyes[1])
         if len(eyes) > 2:
             min_y_diff = float('inf')
@@ -158,14 +168,11 @@ def get_pd(img_bytes):
 
         e1, e2 = best_pair
         eye_dist_px = abs((e1[0] + e1[2]/2) - (e2[0] + e2[2]/2))
-
-        # PD Calculation using the 145mm face-width heuristic
         pd_mm = (eye_dist_px / w) * 145
 
-        return round(pd_mm, 1)
+        return round(pd_mm, 1), circular_face
     except Exception as e:
-        st.error(f"Optical Engine Error: {e}")
-        return None
+        return None, None
 
 # --- 🚀 UI LAUNCH ---
 init_db()
@@ -178,7 +185,9 @@ if menu == t['hub']:
     p_name = st.text_input(t['name'], "Patient #"+hashlib.sha1(os.urandom(4)).hexdigest()[:5])
     col1, col2 = st.columns(2)
     with col1:
-        file = st.file_uploader(t['upload'], type=['jpg','png','jpeg'])
+        method = st.radio("Input Method", ["Upload Scan", "Live Camera"], horizontal=True)
+        file = st.file_uploader(t['upload'], type=['jpg','png','jpeg']) if method == "Upload Scan" else st.camera_input("Scan Retina")
+
         if file and st.button(t['process']):
             img_bytes = file.getvalue()
             with st.spinner("Analyzing..."):
@@ -224,23 +233,26 @@ elif menu == t['portal']:
     else: st.warning("Authentication required.")
 
 elif menu == t['opt']:
-    st.title("🕶️ Pupillary Distance & Frame Assistant")
-    col1, col2 = st.columns(2)
+    st.title("🕶️ Bio-Metric Optical Assistant")
+    col1, col2 = st.columns([1.2, 1])
     with col1:
-        method = st.radio("Scan Method", ["Upload Photo", "Live Camera"])
-        file = st.file_uploader("Selfie", type=['jpg','png']) if method == "Upload Photo" else st.camera_input("Take Selfie")
+        method = st.radio("Acquisition Mode", ["Upload Scan", "Live Bio-Scanner"], horizontal=True)
+        file = st.file_uploader("Selfie", type=['jpg','png']) if method == "Upload Scan" else st.camera_input("Face Scan")
         if file:
             img_bytes = file.getvalue()
-            pd_val = get_pd(img_bytes)
-            if pd_val:
+            pd_val, scan_img = get_pd(img_bytes)
+            if scan_img is not None:
                 st.session_state['pd'] = pd_val
+                st.session_state['scan_img'] = scan_img
             else:
-                st.error("Face/Eyes not detected. Please ensure high visibility.")
+                st.error("Bio-Metric Scan Failed: Face/Eyes not centered. Please try again.")
     with col2:
-        if 'pd' in st.session_state:
-            st.metric("Measured PD", f"{st.session_state['pd']} mm")
-            st.success("Recommendation: Rectangular or Geometric frames.")
-            st.info("Best Shades: Dark Tortoise or Matte Black.")
+        if 'scan_img' in st.session_state:
+            st.image(st.session_state['scan_img'], caption="Validated Bio-Scan", use_container_width=True)
+        if 'pd' in st.session_state and st.session_state['pd'] is not None:
+            st.metric("Detected PD", f"{st.session_state['pd']} mm")
+            st.success("Analysis: Balanced Proportions.")
+            st.info("Recommendation: Geometric or Aviator frames.")
 
 elif menu == "Partner Registration":
     st.title("🤝 Become a Registered Optical Partner")
