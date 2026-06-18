@@ -204,8 +204,23 @@ if menu == t['hub']:
             st.success(f"Diagnosis: {r['cond']} ({r['conf']:.1%})")
             st.image(r['cam'], caption="AI Explainability Map")
             if r['cond'] != "Normal":
-                st.warning("Clinical Referral Required.")
-                st.markdown("[🔍 Find Nearest Registered Clinic](https://www.google.com/maps/search/Ophthalmologist)")
+                st.warning("🚨 Clinical Referral Required.")
+                st.subheader("📍 Recommended Clinics in Accra")
+
+                clinics = [
+                    "Dr. Agarwal's Eye Hospital",
+                    "Third Eyecare and Vision Centre",
+                    "Imprexions Eye Care",
+                    "Spectacular Optics Eye Care",
+                    "Advanced Eyecare",
+                    "St. Thomas Eye Hospital"
+                ]
+
+                for clinic in clinics:
+                    map_url = f"https://www.google.com/maps/search/{clinic.replace(' ', '+')}+Accra"
+                    st.markdown(f"✅ **{clinic}** [🔍 Locate on Map]({map_url})")
+
+                st.info("Please contact one of these certified centers for a comprehensive examination.")
 
 elif menu == t['portal']:
     if st.sidebar.text_input("Admin Key", type="password") == "doctor123":
