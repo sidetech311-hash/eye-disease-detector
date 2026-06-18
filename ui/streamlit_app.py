@@ -83,26 +83,52 @@ def load_clinical_brain():
 
         model = load_model(MODEL_PATH, compile=False)
 
-        # Robust Grad-CAM model building (Nested Model Support)
+        # UNIVERSAL GRAD-CAM BUILDER (Final Boss Fix)
         grad_model = None
         try:
+            # First, find the main feature-extracting layer
+            # We look for the last layer that has a 4D output (the feature map)
+            # We must use model.inputs[0] to ensure we start from the very beginning of the graph
             target_layer = None
-            # Search for the last 4D output layer (the feature map)
             for layer in reversed(model.layers):
-                if hasattr(layer, 'layers'): # Check if it's a sub-model (like EfficientNet)
+                if hasattr(layer, 'layers'): # It's a nested model (like EfficientNet base)
+                    # Loop through inner layers
                     for sub_layer in reversed(layer.layers):
-                        if len(sub_layer.output_shape) == 4:
-                            target_layer = sub_layer; break
-                elif len(layer.output_shape) == 4:
+                        if isinstance(sub_layer, tf.keras.layers.Conv2D) or len(sub_layer.output_shape) == 4:
+                            # Use the layer name to get it from the model for better connectivity
+                            target_layer = sub_layer
+                            break
+                elif isinstance(layer, tf.keras.layers.Conv2D) or len(layer.output_shape) == 4:
                     target_layer = layer
                 if target_layer: break
 
             if target_layer:
-                # Build the grad_model using the functional API's connectivity
-                grad_model = tf.keras.models.Model(model.input, [target_layer.output, model.output])
-        except Exception:
-            st.sidebar.warning("⚠️ Explainability module running in compatibility mode.")
-            grad_model = None
+                # We build the grad_model by mapping the path from the inputs to the outputs
+                # This works even for complex, nested functional models
+                grad_model = tf.keras.models.Model(
+                    inputs=model.inputs,
+                    outputs=[target_layer.output, model.output]
+                )
+        except Exception as e:
+            # If the above fails, try an even more direct approach
+            try:
+                # Some models have the base model as a layer itself
+                base_model = None
+                for layer in model.layers:
+                    if hasattr(layer, 'layers'):
+                        base_model = layer
+                        break
+                if base_model:
+                    target_inner = None
+                    for l in reversed(base_model.layers):
+                        if len(l.output_shape) == 4:
+                            target_inner = l
+                            break
+                    if target_inner:
+                        grad_model = tf.keras.models.Model(model.inputs, [target_inner.output, model.output])
+            except:
+                st.sidebar.warning(f"⚠️ Explainability module limited. Heatmaps may be generic.")
+                grad_model = None
 
         return model, classes, grad_model
     except Exception as e:
