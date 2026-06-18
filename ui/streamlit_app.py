@@ -105,15 +105,31 @@ def save_case(pid, cond, conf):
 @st.cache_resource
 def load_clinical_brain():
     if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 10000:
+        st.info("📡 Downloading AI Brain (80MB)... This may take 1-2 minutes.")
         try:
             r = requests.get(MODEL_URL, stream=True)
+            r.raise_for_status()
             with open(MODEL_PATH, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
-        except: pass
+            st.success("✅ Download Complete.")
+        except Exception as e:
+            st.error(f"❌ Download Failed: {e}")
+            return None, [], None
+
     try:
+        # Check for class names first
+        c_path = 'class_names.json'
+        if not os.path.exists(c_path):
+            c_path = os.path.join(os.path.dirname(__file__), '..', 'class_names.json')
+
+        if not os.path.exists(c_path):
+            st.error("❌ 'class_names.json' not found in root or ui/ folder.")
+            return None, [], None
+
+        with open(c_path, 'r') as f:
+            classes = json.load(f)
+
         model = load_model(MODEL_PATH, compile=False)
-        c_path = 'class_names.json' if os.path.exists('class_names.json') else '../class_names.json'
-        with open(c_path, 'r') as f: classes = json.load(f)
 
         # Pre-build Grad-CAM model for speed
         target_layer = None
@@ -124,9 +140,15 @@ def load_clinical_brain():
             elif len(layer.output_shape) == 4: target_layer = layer
             if target_layer: break
 
-        grad_model = tf.keras.models.Model(model.inputs, [target_layer.output, model.output])
+        if target_layer:
+            grad_model = tf.keras.models.Model(model.inputs, [target_layer.output, model.output])
+        else:
+            grad_model = None
+
         return model, classes, grad_model
-    except: return None, [], None
+    except Exception as e:
+        st.error(f"❌ Brain Load Error: {e}")
+        return None, [], None
 
 # Load Cascades once at start
 @st.cache_resource
