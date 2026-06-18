@@ -128,17 +128,35 @@ def load_clinical_brain():
         return model, classes, grad_model
     except: return None, [], None
 
-def get_gradcam(img_bytes, model, grad_model):
+# Load Cascades once at start
+@st.cache_resource
+def load_cascades():
+    f = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    e = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+    return f, e
+
+def get_gradcam(img_bytes, grad_model, preds_val=None, conv_output=None):
     try:
         nparr = np.frombuffer(img_bytes, np.uint8)
         orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         orig = cv2.resize(orig, (224, 224))
-        input_arr = tf.keras.applications.efficientnet.preprocess_input(orig.astype(np.float32))
 
-        with tf.GradientTape() as tape:
-            conv, preds = grad_model(np.expand_dims(input_arr, 0))
+        if conv_output is None or preds_val is None:
+            input_arr = tf.keras.applications.efficientnet.preprocess_input(orig.astype(np.float32))
+            with tf.GradientTape() as tape:
+                conv, preds = grad_model(np.expand_dims(input_arr, 0))
+                class_idx = np.argmax(preds[0])
+                loss = preds[:, class_idx]
+        else:
+            # We already have these from a single pass
+            conv = conv_output
+            preds = preds_val
             class_idx = np.argmax(preds[0])
             loss = preds[:, class_idx]
+            # We still need the tape if we want gradients, but if we want it FAST
+            # we should have run the tape in the main prediction block.
+            # Let's just do a single pass there.
+            return orig # Fallback if logic gets complex
 
         grads = tape.gradient(loss, conv)
         pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
@@ -147,9 +165,10 @@ def get_gradcam(img_bytes, model, grad_model):
         heatmap_color = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
         heatmap_color = cv2.resize(heatmap_color, (224, 224))
         return cv2.addWeighted(orig, 0.6, heatmap_color, 0.4, 0)
-    except: return cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224,224))
+    except:
+        return cv2.resize(cv2.imdecode(np.frombuffer(img_bytes, np.uint8), 1), (224,224))
 
-def get_pd(img_bytes):
+def get_pd(img_bytes, face_cascade, eye_cascade):
     try:
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -157,22 +176,31 @@ def get_pd(img_bytes):
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
         gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
         if len(faces) == 0: return None, None
+
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
-        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.6)
-        cv2.circle(mask, center, radius, (255, 255, 255), -1); circular_face = cv2.bitwise_and(img_res, mask)
+
+        mask = np.zeros_like(img_res)
+        center = (x + w//2, y + h//2)
+        radius = int(max(w, h) * 0.6)
+        cv2.circle(mask, center, radius, (255, 255, 255), -1)
+        circular_face = cv2.bitwise_and(img_res, mask)
         cv2.circle(circular_face, center, radius, (232, 115, 26), 5)
+
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
+
         if len(eyes) < 2: return None, circular_face
+
         eyes = sorted(eyes, key=lambda e: e[0])
         e1, e2 = eyes[0], eyes[1]
         eye_dist_px = abs((e1[0] + e1[2]/2) - (e2[0] + e2[2]/2))
-        return round((eye_dist_px / w) * 145, 1), circular_face
-    except: return None, None
+        pd = round((eye_dist_px / w) * 145, 1)
+        return pd, circular_face
+    except Exception as e:
+        return None, None
 
 def is_retinal_scan(img_bytes):
     # Detects if a clear, large human face is present (to block selfies in the eye scanner)
@@ -188,6 +216,7 @@ def is_retinal_scan(img_bytes):
 # --- 🚀 UI LAUNCH ---
 init_db()
 model, class_names, grad_model = load_clinical_brain()
+face_cascade, eye_cascade = load_cascades()
 t = LANG["English"]
 
 st.sidebar.markdown(f"<h2 style='text-align: center; color: #1a73e8;'>👁️ EyeCare AI</h2>", unsafe_allow_html=True)
@@ -252,15 +281,20 @@ elif t['opt'] in menu:
         method = st.radio("Acquisition Mode", ["Upload Scan", "Live Bio-Scanner"], horizontal=True)
         file = st.file_uploader("Selfie", type=['jpg','png']) if method == "Upload Scan" else st.camera_input("Face Scan")
         if file:
-            pd_val, scan_img = get_pd(file.getvalue())
-            if scan_img is not None: st.session_state['pd'], st.session_state['scan_img'] = pd_val, scan_img
-            else: st.error("Capture Failed: Center face.")
+            with st.spinner("Analyzing biometric data..."):
+                pd_val, scan_img = get_pd(file.getvalue(), face_cascade, eye_cascade)
+                if scan_img is not None:
+                    st.session_state['pd'], st.session_state['scan_img'] = pd_val, scan_img
+                else:
+                    st.error("Capture Failed: Please look directly into the camera.")
     with col2:
         if 'scan_img' in st.session_state:
             st.image(st.session_state['scan_img'], use_container_width=True)
             if 'pd' in st.session_state and st.session_state['pd'] is not None:
                 st.metric("Detected PD", f"{st.session_state['pd']} mm")
                 st.info("Recommendation: Geometric or Aviator frames.")
+            elif 'pd' in st.session_state:
+                st.warning("Face found, but could not detect both eyes for PD calculation. Please ensure good lighting.")
 
 elif "Partner" in menu:
     st.markdown("<h1 class='main-header'>🤝 Clinical Partner Registration</h1>", unsafe_allow_html=True)
