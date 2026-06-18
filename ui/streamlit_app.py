@@ -47,7 +47,7 @@ st.markdown("""
         margin: 0 auto;
     }
     [data-testid="stCameraInput"] video {
-        transform: scaleX(-1) scale(1.5);
+        transform: scaleX(-1) scale(2.2);
         transform-origin: center;
         object-fit: cover;
     }
