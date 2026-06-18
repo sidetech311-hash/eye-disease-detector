@@ -113,15 +113,8 @@ def load_clinical_brain():
     try:
         model = load_model(MODEL_PATH, compile=False)
         with open('class_names.json', 'r') as f: classes = json.load(f)
-        return model, classes
-    except: return None, []
 
-def get_gradcam(img_bytes, model):
-    try:
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        orig = cv2.resize(orig, (224, 224))
-        input_arr = tf.keras.applications.efficientnet.preprocess_input(orig.astype(np.float32))
+        # Pre-build Grad-CAM model for speed
         target_layer = None
         for layer in reversed(model.layers):
             if isinstance(layer, tf.keras.Model):
@@ -129,11 +122,23 @@ def get_gradcam(img_bytes, model):
                     if len(sub_layer.output_shape) == 4: target_layer = sub_layer; break
             elif len(layer.output_shape) == 4: target_layer = layer
             if target_layer: break
+
         grad_model = tf.keras.models.Model(model.inputs, [target_layer.output, model.output])
+        return model, classes, grad_model
+    except: return None, [], None
+
+def get_gradcam(img_bytes, model, grad_model):
+    try:
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        orig = cv2.resize(orig, (224, 224))
+        input_arr = tf.keras.applications.efficientnet.preprocess_input(orig.astype(np.float32))
+
         with tf.GradientTape() as tape:
             conv, preds = grad_model(np.expand_dims(input_arr, 0))
             class_idx = np.argmax(preds[0])
             loss = preds[:, class_idx]
+
         grads = tape.gradient(loss, conv)
         pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
         heatmap = conv[0] @ pooled[..., tf.newaxis]
@@ -181,7 +186,7 @@ def is_retinal_scan(img_bytes):
 
 # --- 🚀 UI LAUNCH ---
 init_db()
-model, class_names = load_clinical_brain()
+model, class_names, grad_model = load_clinical_brain()
 t = LANG["English"]
 
 st.sidebar.markdown(f"<h2 style='text-align: center; color: #1a73e8;'>👁️ EyeCare AI</h2>", unsafe_allow_html=True)
@@ -205,7 +210,7 @@ if t['hub'] in menu:
                     prep = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
                     preds = model.predict(np.expand_dims(prep, 0))
                     idx = np.argmax(preds[0]); conf = float(preds[0][idx]); cond = class_names[idx].title()
-                    cam = get_gradcam(img_bytes, model)
+                    cam = get_gradcam(img_bytes, model, grad_model)
                     st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "pid": p_name}
                     save_case(p_name, cond, conf)
     with col2:
