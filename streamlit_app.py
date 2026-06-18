@@ -36,14 +36,21 @@ st.markdown("""
     .main { background-color: var(--background); }
     .main-header { font-family: 'Helvetica Neue', sans-serif; color: var(--secondary); font-weight: 700; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 25px; }
 
-    /* Mirror Flip for Camera */
+    /* Mirror Flip and Zoom for Camera */
     [data-testid="stCameraInput"] {
         border: 5px solid var(--primary);
-        border-radius: 20px;
+        border-radius: 50%;
         overflow: hidden;
         box-shadow: 0 10px 30px rgba(26, 115, 232, 0.3);
+        width: 350px !important;
+        height: 350px !important;
+        margin: 0 auto;
     }
-    [data-testid="stCameraInput"] video { transform: scaleX(-1); }
+    [data-testid="stCameraInput"] video {
+        transform: scaleX(-1) scale(1.5);
+        transform-origin: center;
+        object-fit: cover;
+    }
 
     .stMetric { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 8px solid var(--primary); }
     [data-testid="stSidebar"] { background-image: linear-gradient(#ffffff, #e3f2fd); }
