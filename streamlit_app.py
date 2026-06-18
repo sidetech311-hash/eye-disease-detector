@@ -97,35 +97,69 @@ def get_pd(img_bytes):
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # Load Cascades
+        # 1. ENHANCED PRE-PROCESSING
+        # Standardize size for detection consistency
+        h_orig, w_orig = img.shape[:2]
+        img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
+        gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
+
+        # Multi-scale Contrast Enhancement (CLAHE)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        gray = clahe.apply(gray)
+
+        # 2. LOAD CASCADES
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
 
-        # Pre-process image for better detection
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray) # Normalize lighting
+        # 3. DETECT FACE (with fallbacks)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
 
-        # Detect Face
-        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
         if len(faces) == 0:
-            st.warning("No face detected. Please face the camera directly.")
+            # Try with a more sensitive setting
+            faces = face_cascade.detectMultiScale(gray, 1.05, 3)
+
+        if len(faces) == 0:
+            st.warning("Face not detected. Please ensure your face is fully visible and well-lit.")
             return None
 
+        # Sort by size and take the largest face
+        faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
         x, y, w, h = faces[0]
-        # Restrict eye search to the upper region of the face (saves time & accuracy)
-        roi_gray = gray[y : y + int(h/2), x : x + w]
 
-        # Detect Eyes
-        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 10)
+        # 4. DETECT EYES IN ROI
+        # Restrict to upper 60% of the face
+        roi_gray = gray[y : y + int(h * 0.6), x : x + w]
+
+        # Try multiple passes for eyes
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
 
         if len(eyes) < 2:
-            st.warning(f"Found {len(eyes)} eye(s). Need both for PD measurement. Try better lighting.")
+            # More sensitive pass
+            eyes = eye_cascade.detectMultiScale(roi_gray, 1.02, 3)
+
+        if len(eyes) < 2:
+            st.warning("Found only one eye or no eyes. Please face the camera directly without head tilt.")
             return None
 
-        # Calculate PD using the 145mm face-width heuristic
-        # We sort by X-coordinate to ensure we have left and right eye correctly
+        # Sort by X to get left and right
         eyes = sorted(eyes, key=lambda e: e[0])
-        eye_dist_px = abs((eyes[0][0] + eyes[0][2]/2) - (eyes[1][0] + eyes[1][2]/2))
+
+        # Filter: If more than 2 eyes found, pick the two that are most likely to be a pair
+        # (similar Y coordinate and size)
+        best_pair = (eyes[0], eyes[1])
+        if len(eyes) > 2:
+            min_y_diff = float('inf')
+            for i in range(len(eyes)):
+                for j in range(i + 1, len(eyes)):
+                    y_diff = abs(eyes[i][1] - eyes[j][1])
+                    if y_diff < min_y_diff:
+                        min_y_diff = y_diff
+                        best_pair = (eyes[i], eyes[j])
+
+        e1, e2 = best_pair
+        eye_dist_px = abs((e1[0] + e1[2]/2) - (e2[0] + e2[2]/2))
+
+        # PD Calculation using the 145mm face-width heuristic
         pd_mm = (eye_dist_px / w) * 145
 
         return round(pd_mm, 1)
