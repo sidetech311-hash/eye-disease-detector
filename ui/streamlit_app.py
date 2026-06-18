@@ -91,17 +91,29 @@ def get_gradcam(img_bytes, model):
     img = cv2.addWeighted(orig, 4, cv2.GaussianBlur(orig, (0,0), 10), -4, 128)
     input_arr = tf.keras.applications.efficientnet.preprocess_input(img.astype(np.float32))
 
-    grad_model = tf.keras.models.Model(model.inputs, [model.get_layer("top_activation").output, model.output])
+    # --- AUTO-FIND LAST CONV LAYER ---
+    last_conv_layer = None
+    for layer in reversed(model.layers):
+        if len(layer.output_shape) == 4:
+            last_conv_layer = layer.name
+            break
+
+    if not last_conv_layer:
+        return orig
+
+    grad_model = tf.keras.models.Model(model.inputs, [model.get_layer(last_conv_layer).output, model.output])
     with tf.GradientTape() as tape:
         last_conv, preds = grad_model(np.expand_dims(input_arr, 0))
         class_channel = preds[:, np.argmax(preds[0])]
+
     grads = tape.gradient(class_channel, last_conv)
     pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
     heatmap = last_conv[0] @ pooled[..., tf.newaxis]
-    heatmap = np.maximum(tf.squeeze(heatmap), 0) / np.max(heatmap)
+    heatmap = np.maximum(tf.squeeze(heatmap), 0) / (np.max(heatmap) if np.max(heatmap) > 0 else 1)
 
     heatmap_img = np.uint8(255 * heatmap)
     heatmap_color = cv2.applyColorMap(heatmap_img, cv2.COLORMAP_JET)
+    heatmap_color = cv2.resize(heatmap_color, (224, 224))
     return cv2.addWeighted(orig, 0.6, heatmap_color, 0.4, 0)
 
 # --- 🚀 UI LAUNCH ---
