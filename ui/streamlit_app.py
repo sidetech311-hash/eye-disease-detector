@@ -71,12 +71,6 @@ st.markdown("""
         background-image: linear-gradient(rgba(26, 115, 232, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(26, 115, 232, 0.1) 1px, transparent 1px);
         background-size: 20px 20px; pointer-events: none; opacity: 0.5;
     }
-    /* Neural Grid Pattern */
-    [data-testid="stCameraInput"] > div::after {
-        content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background-image: linear-gradient(rgba(26, 115, 232, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(26, 115, 232, 0.1) 1px, transparent 1px);
-        background-size: 20px 20px; pointer-events: none; opacity: 0.5;
-    }
     @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
     @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }
 
