@@ -1,4 +1,8 @@
 tensorflow-cpu==2.15.0
+tf-keras==2.15.0
+fastapi
+uvicorn
+python-multipart
 numpy<2.0.0
 pillow
 pandas
