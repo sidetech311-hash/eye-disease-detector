@@ -220,8 +220,15 @@ if t['hub'] in menu:
                                 conv_output, preds = grad_model(input_batch)
                                 idx = np.argmax(preds[0]); loss = preds[:, idx]
                             grads = tape.gradient(loss, conv_output)
-                            pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
-                            heatmap = np.maximum(tf.squeeze(conv_output[0] @ pooled[..., tf.newaxis]), 0)
+
+                            # Robust reduction to prevent dimension errors
+                            if len(grads.shape) == 4:
+                                pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
+                                heatmap = np.maximum(tf.squeeze(conv_output[0] @ pooled[..., tf.newaxis]), 0)
+                            else:
+                                # Fallback if grads is not 4D (e.g. if layer selected is a dense layer)
+                                heatmap = np.zeros((conv_output.shape[1], conv_output.shape[2]))
+
                             heatmap /= (np.max(heatmap) if np.max(heatmap) > 0 else 1)
                             cam = cv2.addWeighted(orig_res, 0.6, cv2.resize(cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET), (224,224)), 0.4, 0)
                         else:
