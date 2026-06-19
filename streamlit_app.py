@@ -39,19 +39,26 @@ st.markdown("""
     /* Mirror Flip and Zoom for Camera */
     [data-testid="stCameraInput"] {
         border: 5px solid var(--primary);
-        border-radius: 50%;
-        overflow: hidden;
+        border-radius: 50% !important;
+        overflow: hidden !important;
         box-shadow: 0 10px 30px rgba(26, 115, 232, 0.3);
         width: 350px !important;
         height: 350px !important;
         margin: 0 auto;
+        position: relative;
+    }
+    /* Force the internal containers to be circular */
+    [data-testid="stCameraInput"] > div {
+        border-radius: 50% !important;
+        overflow: hidden !important;
     }
     [data-testid="stCameraInput"] video {
         transform: scaleX(-1) scale(2.2);
         transform-origin: center;
         object-fit: cover;
+        border-radius: 50% !important;
     }
-    /* Biometric Pulse Animation */
+    /* Biometric Pulse and Scanning Line */
     [data-testid="stCameraInput"]::after {
         content: "";
         position: absolute;
@@ -59,6 +66,22 @@ st.markdown("""
         border: 2px solid rgba(26, 115, 232, 0.5);
         border-radius: 50%;
         animation: pulse 2s infinite;
+        pointer-events: none;
+    }
+    /* Digital Scanning Line Overlay */
+    [data-testid="stCameraInput"]::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 2px;
+        background: rgba(232, 115, 26, 0.6);
+        box-shadow: 0 0 15px rgba(232, 115, 26, 0.8);
+        animation: scan 3s linear infinite;
+        z-index: 10;
+        pointer-events: none;
+    }
+    @keyframes scan {
+        0% { top: 0%; }
+        100% { top: 100%; }
     }
     @keyframes pulse {
         0% { transform: scale(1); opacity: 1; }
