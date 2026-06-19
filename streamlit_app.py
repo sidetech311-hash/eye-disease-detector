@@ -204,7 +204,6 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         cv2.circle(circular_face, center, radius, (132, 232, 26), 4) # Success Green
         return pd_mm, circular_face
     except: return None, None
-    except: return None, None
 
 def is_retinal_scan(img_bytes, face_cascade):
     nparr = np.frombuffer(img_bytes, np.uint8)
