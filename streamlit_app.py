@@ -65,6 +65,12 @@ st.markdown("""
         background: rgba(232, 115, 26, 0.6); box-shadow: 0 0 15px rgba(232, 115, 26, 0.8);
         animation: scan 3s linear infinite; z-index: 10; pointer-events: none;
     }
+    /* Neural Grid Pattern */
+    [data-testid="stCameraInput"] > div::after {
+        content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background-image: linear-gradient(rgba(26, 115, 232, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(26, 115, 232, 0.1) 1px, transparent 1px);
+        background-size: 20px 20px; pointer-events: none; opacity: 0.5;
+    }
     @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
     @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }
 
@@ -142,42 +148,57 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         h_orig, w_orig = img.shape[:2]
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
+
+        # Enhanced pre-processing
+        gray = cv2.equalizeHist(gray)
         gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
+
+        # More sensitive detection for webcams
+        faces = face_cascade.detectMultiScale(gray, 1.1, 3, minSize=(80, 80))
         if len(faces) == 0: return None, None
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
 
         # Biometric HUD Overlay
         overlay = img_res.copy()
-        c_len = int(w * 0.1); thick = 4; color = (232, 115, 26)
-        # Corners
-        cv2.line(overlay, (x, y), (x + c_len, y), color, thick)
-        cv2.line(overlay, (x, y), (x, y + c_len), color, thick)
-        cv2.line(overlay, (x + w, y), (x + w - c_len, y), color, thick)
-        cv2.line(overlay, (x + w, y), (x + w, y + c_len), color, thick)
-        cv2.line(overlay, (x, y + h), (x + c_len, y + h), color, thick)
-        cv2.line(overlay, (x, y + h), (x, y + h - c_len), color, thick)
-        cv2.line(overlay, (x + w, y + h), (x + w - c_len, y + h), color, thick)
-        cv2.line(overlay, (x + w, y + h), (x + w, y + h - c_len), color, thick)
-        cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 255), 1)
+        c_len = int(w * 0.15); thick = 3; color = (232, 115, 26)
+        # Digital Corners (HUD style)
+        for dx, dy in [(0,0), (1,0), (0,1), (1,1)]:
+            px = x + dx * w; py = y + dy * h
+            cv2.line(overlay, (px, py), (px + (1-2*dx)*c_len, py), color, thick)
+            cv2.line(overlay, (px, py), (px, py + (1-2*dy)*c_len), color, thick)
+
+        # Digital Grid Pattern on Face
+        for i in range(1, 4):
+            cv2.line(overlay, (x + i*w//4, y), (x + i*w//4, y + h), (255, 255, 255), 1)
+            cv2.line(overlay, (x, y + i*h//4), (x + w, y + i*h//4), (255, 255, 255), 1)
 
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
-        eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
+        # Multi-scale eye detection
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 5, minSize=(20, 20))
+
         if len(eyes) < 2: return None, overlay
+
         eyes = sorted(eyes, key=lambda e: e[0])
         p1 = (x + eyes[0][0] + eyes[0][2]//2, y + eyes[0][1] + eyes[0][3]//2)
         p2 = (x + eyes[1][0] + eyes[1][2]//2, y + eyes[1][1] + eyes[1][3]//2)
+
         for p in [p1, p2]:
             cv2.drawMarker(overlay, p, (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
-            cv2.circle(overlay, p, 5, (0, 0, 255), -1)
+            cv2.circle(overlay, p, 6, (0, 0, 255), -1)
+
         cv2.line(overlay, p1, p2, (232, 115, 26), 2, cv2.LINE_AA)
 
+        # PD Calculation
         pd_mm = round((abs(p1[0] - p2[0]) / w) * 145, 1)
-        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.6)
+
+        # Final result styling
+        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.65)
         cv2.circle(mask, center, radius, (255, 255, 255), -1)
         circular_face = cv2.bitwise_and(overlay, mask)
-        cv2.circle(circular_face, center, radius, (232, 115, 26), 4)
+        cv2.circle(circular_face, center, radius, (132, 232, 26), 4) # Green bio-ring
+
         return pd_mm, circular_face
+    except: return None, None
     except: return None, None
 
 def is_retinal_scan(img_bytes, face_cascade):
