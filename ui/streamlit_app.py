@@ -96,6 +96,7 @@ def save_case(pid, cond, conf):
 @st.cache_resource
 def load_clinical_brain():
     if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 10000:
+        if os.path.exists(MODEL_PATH): os.remove(MODEL_PATH)
         try:
             r = requests.get(MODEL_URL, stream=True)
             r.raise_for_status()
@@ -132,7 +133,9 @@ def load_clinical_brain():
             except: continue
 
         return model, classes, grad_model
-    except:
+    except Exception as e:
+        st.error(f"🧠 Brain Load Failure: {e}")
+        if os.path.exists(MODEL_PATH): os.remove(MODEL_PATH)
         return None, [], None
 
 @st.cache_resource
