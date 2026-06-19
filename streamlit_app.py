@@ -29,7 +29,7 @@ LANG = {
 
 st.set_page_config(page_title="EyeCare AI Pro", layout="wide", page_icon="👁️")
 
-# --- 💅 STYLING ---
+# --- 💅 PROFESSIONAL STYLING ---
 st.markdown("""
     <style>
     :root { --primary: #1a73e8; --secondary: #0d47a1; --background: #f8f9fa; }
@@ -131,9 +131,6 @@ def load_clinical_brain():
     except Exception as e:
         st.error(f"❌ Brain Load Error: {e}")
         return None, [], None
-    except Exception as e:
-        st.error(f"❌ Brain Load Error: {e}")
-        return None, [], None
 
 # Load Cascades once
 @st.cache_resource
@@ -141,6 +138,11 @@ def load_cascades():
     f = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     e = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
     return f, e
+
+def ben_graham_process(img):
+    # This enhances retinal vessels for human verification
+    img_res = cv2.resize(img, (224, 224))
+    return cv2.addWeighted(img_res, 4, cv2.GaussianBlur(img_res, (0,0), 10), -4, 128)
 
 def get_pd(img_bytes, face_cascade, eye_cascade):
     try:
@@ -237,7 +239,10 @@ if t['hub'] in menu:
 
                 with st.spinner("Analyzing..."):
                         nparr = np.frombuffer(img_bytes, np.uint8)
-                        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR); orig_res = cv2.resize(orig, (224, 224))
+                        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        orig_res = cv2.resize(orig, (224, 224))
+                        enhanced = ben_graham_process(orig)
+
                         input_arr = tf.keras.applications.efficientnet.preprocess_input(orig_res.astype(np.float32))
                         input_batch = np.expand_dims(input_arr, 0)
 
@@ -263,13 +268,18 @@ if t['hub'] in menu:
                             idx = np.argmax(preds[0]); cam = orig_res
 
                         conf = float(preds[0][idx]); cond = class_names[idx].title()
-                        st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "pid": p_name}
+                        st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "enhanced": enhanced, "pid": p_name}
                         save_case(p_name, cond, conf)
     with col2:
         if 'res' in st.session_state:
             r = st.session_state['res']
             st.markdown(f"""<div style="background: white; padding: 20px; border-radius: 15px; border: 1px solid #eee; margin-bottom: 20px;"><p style="color: gray; margin: 0;">Diagnosis</p><h2 style="margin: 0; color: #1a73e8;">{r['cond']}</h2><p style="margin: 0; font-weight: bold; color: #28a745;">Confidence: {r['conf']:.1%}</p></div>""", unsafe_allow_html=True)
-            st.image(r['cam'], caption="AI Explainability Map")
+
+            t1, t2, t3 = st.tabs(["AI Heatmap", "Enhanced View", "Raw Scan"])
+            t1.image(r['cam'], use_container_width=True)
+            t2.image(r['enhanced'], caption="Vessel Contrast Enhancement (Ben Graham Method)", use_container_width=True)
+            t3.image(r['enhanced'], caption="Original Clinical Data", use_container_width=True)
+
             if r['cond'] != "Normal":
                 st.warning("🚨 Clinical Referral Required.")
                 clinics = ["Dr. Agarwal's Eye Hospital", "Third Eyecare and Vision Centre", "Imprexions Eye Care", "Spectacular Optics Eye Care", "Advanced Eyecare", "St. Thomas Eye Hospital"]
@@ -287,8 +297,22 @@ elif t['portal'] in menu:
         col1.metric("Monthly Savings", f"${savings:,.2f}")
         col2.metric("Annual Profit", f"${savings*12:,.2f}")
         st.markdown("---")
+
+        st.subheader("📋 Screening History & Analytics")
         conn = sqlite3.connect('clinical_records.db')
-        st.dataframe(pd.read_sql('SELECT * FROM screenings ORDER BY id DESC', conn), use_container_width=True)
+        df = pd.read_sql('SELECT * FROM screenings ORDER BY id DESC', conn)
+
+        if not df.empty:
+            c1, c2 = st.columns([1.5, 1])
+            with c1:
+                st.dataframe(df, use_container_width=True)
+            with c2:
+                # Catchy Pie Chart
+                dist = df['condition'].value_counts()
+                st.write("**Disease Distribution**")
+                st.bar_chart(dist)
+        else:
+            st.info("No records yet.")
     else: st.warning("Authentication required.")
 
 elif t['opt'] in menu:
