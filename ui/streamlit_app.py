@@ -51,6 +51,19 @@ st.markdown("""
         transform-origin: center;
         object-fit: cover;
     }
+    /* Biometric Pulse Animation */
+    [data-testid="stCameraInput"]::after {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        border: 2px solid rgba(26, 115, 232, 0.5);
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        100% { transform: scale(1.1); opacity: 0; }
+    }
 
     .stMetric { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 8px solid var(--primary); }
     [data-testid="stSidebar"] { background-image: linear-gradient(#ffffff, #e3f2fd); }
@@ -158,16 +171,26 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
 
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
 
-        # UI Overlay: Facial Recognition Simulation
+        # --- 🤖 AI BIOMETRIC HUD OVERLAY ---
         overlay = img_res.copy()
-        # Draw bounding box with corner accents
-        c_len = 30
-        cv2.rectangle(overlay, (x, y), (x+w, y+h), (0, 255, 0), 1)
-        # Corners
-        cv2.line(overlay, (x, y), (x+c_len, y), (0, 255, 0), 4)
-        cv2.line(overlay, (x, y), (x, y+c_len), (0, 255, 0), 4)
-        cv2.line(overlay, (x+w-c_len, y), (x+w, y), (0, 255, 0), 4)
-        cv2.line(overlay, (x+w, y), (x+w, y+c_len), (0, 255, 0), 4)
+
+        # 1. Corner Accents (The "Scanning" look)
+        c_len = int(w * 0.1); thick = 4; color = (232, 115, 26) # Blue/Orange Med-Tech palette
+        # Top-Left
+        cv2.line(overlay, (x, y), (x + c_len, y), color, thick)
+        cv2.line(overlay, (x, y), (x, y + c_len), color, thick)
+        # Top-Right
+        cv2.line(overlay, (x + w, y), (x + w - c_len, y), color, thick)
+        cv2.line(overlay, (x + w, y), (x + w, y + c_len), color, thick)
+        # Bottom-Left
+        cv2.line(overlay, (x, y + h), (x + c_len, y + h), color, thick)
+        cv2.line(overlay, (x, y + h), (x, y + h - c_len), color, thick)
+        # Bottom-Right
+        cv2.line(overlay, (x + w, y + h), (x + w - c_len, y + h), color, thick)
+        cv2.line(overlay, (x + w, y + h), (x + w, y + h - c_len), color, thick)
+
+        # 2. Main Bounding Box (Subtle)
+        cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 255), 1)
 
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
@@ -181,21 +204,26 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         p1 = (x + e1[0] + e1[2]//2, y + e1[1] + e1[3]//2)
         p2 = (x + e2[0] + e2[2]//2, y + e2[1] + e2[3]//2)
 
-        # Draw landmarks
-        cv2.circle(overlay, p1, 5, (0, 0, 255), -1) # Left pupil
-        cv2.circle(overlay, p2, 5, (0, 0, 255), -1) # Right pupil
-        cv2.line(overlay, p1, p2, (255, 255, 0), 2) # PD line
+        # 3. Precision Crosshairs
+        for p in [p1, p2]:
+            cv2.drawMarker(overlay, p, (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
+            cv2.circle(overlay, p, 5, (0, 0, 255), -1)
+
+        # 4. Geometry Scan Line
+        cv2.line(overlay, p1, p2, (232, 115, 26), 2, cv2.LINE_AA)
+
+        # 5. Data Labels
+        uid = f"BIO-ID: {hashlib.sha1(os.urandom(2)).hexdigest()[:6].upper()}"
+        cv2.putText(overlay, uid, (x, y - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
         eye_dist_px = abs(p1[0] - p2[0])
         pd_mm = round((eye_dist_px / w) * 145, 1)
 
-        # Face mask logic (Circular)
+        # Final Face Mask (Circular)
         mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.6)
-        cv2.circle(mask, center, radius, (255, 255, 255), -1); circular_face = cv2.bitwise_and(overlay, mask)
-        cv2.circle(circular_face, center, radius, (232, 115, 26), 3)
-
-        # Data Overlay
-        cv2.putText(circular_face, f"ID: BIO-{hashlib.sha1(os.urandom(2)).hexdigest()[:4].upper()}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.circle(mask, center, radius, (255, 255, 255), -1)
+        circular_face = cv2.bitwise_and(overlay, mask)
+        cv2.circle(circular_face, center, radius, (232, 115, 26), 4)
 
         return pd_mm, circular_face
     except: return None, None
