@@ -1,11 +1,7 @@
 import streamlit as st
 import numpy as np
 import tensorflow as tf
-try:
-    import tf_keras as keras
-except ImportError:
-    from tensorflow import keras
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 import cv2
 import json
 import os
@@ -49,24 +45,23 @@ st.markdown("""
     }
     [data-testid="stCameraInput"] > div { border-radius: 50% !important; overflow: hidden !important; }
     [data-testid="stCameraInput"] video {
-        transform: scaleX(-1); /* Minimal transformation for stability */
+        transform: scaleX(-1);
         object-fit: cover;
         border-radius: 50% !important;
     }
-    /* Pulse Ring */
+    /* Pulse and Scan Line */
     [data-testid="stCameraInput"]::after {
         content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
         border: 2px solid rgba(26, 115, 232, 0.5); border-radius: 50%;
         animation: pulse 2s infinite; pointer-events: none;
     }
-    /* Simple Scanning Line */
     [data-testid="stCameraInput"]::before {
         content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
-        background: rgba(232, 115, 26, 0.6);
+        background: rgba(232, 115, 26, 0.6); box-shadow: 0 0 15px rgba(232, 115, 26, 0.8);
         animation: scan 3s linear infinite; z-index: 10; pointer-events: none;
     }
     @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
-    @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.05); opacity: 0; } }
+    @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }
 
     .stMetric { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 8px solid var(--primary); }
     [data-testid="stSidebar"] { background-image: linear-gradient(#ffffff, #e3f2fd); }
@@ -104,16 +99,15 @@ def load_clinical_brain():
             block_size = 1024 * 8
             progress_bar = st.progress(0)
             downloaded = 0
-
             with open(MODEL_PATH, "wb") as f:
                 for chunk in r.iter_content(chunk_size=block_size):
                     f.write(chunk)
                     downloaded += len(chunk)
                     if total_size > 0:
                         progress_bar.progress(min(downloaded / total_size, 1.0))
-            st.success("✅ AI Brain Ready.")
+            st.success("✅ AI Brain Downloaded.")
         except Exception as e:
-            st.error(f"Brain Load Error: {e}")
+            st.error(f"Download Error: {e}")
             return None, [], None
 
     try:
@@ -123,8 +117,10 @@ def load_clinical_brain():
         if not os.path.exists(c_path): return None, [], None
         with open(c_path, 'r') as f: classes = json.load(f)
 
+        # Load model using standard TF loader (will be Keras 2 after environment update)
         model = load_model(MODEL_PATH, compile=False)
-        # Fast Grad-CAM detection
+
+        # Build Grad-CAM model
         grad_model = None
         for layer in reversed(model.layers):
             try:
@@ -160,7 +156,6 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         if len(faces) == 0: return None, None
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
 
-        # Biometric HUD Overlay
         overlay = img_res.copy()
         c_len = int(w * 0.1); thick = 4; color = (232, 115, 26)
         for dx, dy in [(0,0), (1,0), (0,1), (1,1)]:
@@ -252,7 +247,7 @@ if t['hub'] in menu:
             if r['cond'] != "Normal":
                 st.warning("🚨 Clinical Referral Required.")
                 clinics = ["Dr. Agarwal's Eye Hospital", "St. Thomas Eye Hospital"]
-                for clinic in clinics: st.markdown(f"✅ **{clinic}** [🔍 Locate](https://www.google.com/maps/search/{clinic.replace(' ', '+')}+Accra)")
+                for c in clinics: st.markdown(f"✅ **{c}** [🔍 Locate](https://www.google.com/maps/search/{c.replace(' ', '+')}+Accra)")
 
 elif t['portal'] in menu:
     st.markdown(f"<h1 class='main-header'>📊 {t['portal']}</h1>", unsafe_allow_html=True)
