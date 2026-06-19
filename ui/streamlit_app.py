@@ -36,7 +36,7 @@ st.markdown("""
     .main { background-color: var(--background); }
     .main-header { font-family: 'Helvetica Neue', sans-serif; color: var(--secondary); font-weight: 700; border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin-bottom: 25px; }
 
-    /* Mirror Flip and Zoom for Camera */
+    /* Hardware-Safe Camera Styling */
     [data-testid="stCameraInput"] {
         border: 5px solid var(--primary);
         border-radius: 50% !important;
@@ -49,30 +49,24 @@ st.markdown("""
     }
     [data-testid="stCameraInput"] > div { border-radius: 50% !important; overflow: hidden !important; }
     [data-testid="stCameraInput"] video {
-        transform: scaleX(-1) scale(2.2);
-        transform-origin: center;
+        transform: scaleX(-1); /* Minimal transformation for stability */
         object-fit: cover;
         border-radius: 50% !important;
     }
-    /* Pulse and Scan Line */
+    /* Pulse Ring */
     [data-testid="stCameraInput"]::after {
         content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
         border: 2px solid rgba(26, 115, 232, 0.5); border-radius: 50%;
         animation: pulse 2s infinite; pointer-events: none;
     }
+    /* Simple Scanning Line */
     [data-testid="stCameraInput"]::before {
         content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 2px;
-        background: rgba(232, 115, 26, 0.6); box-shadow: 0 0 15px rgba(232, 115, 26, 0.8);
+        background: rgba(232, 115, 26, 0.6);
         animation: scan 3s linear infinite; z-index: 10; pointer-events: none;
     }
-    /* Neural Grid Pattern */
-    [data-testid="stCameraInput"] > div::after {
-        content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        background-image: linear-gradient(rgba(26, 115, 232, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(26, 115, 232, 0.1) 1px, transparent 1px);
-        background-size: 20px 20px; pointer-events: none; opacity: 0.5;
-    }
     @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
-    @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }
+    @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.05); opacity: 0; } }
 
     .stMetric { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-left: 8px solid var(--primary); }
     [data-testid="stSidebar"] { background-image: linear-gradient(#ffffff, #e3f2fd); }
@@ -105,27 +99,37 @@ def load_clinical_brain():
         try:
             r = requests.get(MODEL_URL, stream=True)
             r.raise_for_status()
+            total_size = int(r.headers.get('content-length', 0))
+            block_size = 1024 * 8
+            progress_bar = st.progress(0)
+            downloaded = 0
+
             with open(MODEL_PATH, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192): f.write(chunk)
+                for chunk in r.iter_content(chunk_size=block_size):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0:
+                        progress_bar.progress(min(downloaded / total_size, 1.0))
+            st.success("✅ AI Brain Ready.")
         except Exception as e:
+            st.error(f"Brain Load Error: {e}")
             return None, [], None
 
     try:
+        # Resolve class names
         c_path = 'class_names.json'
         if not os.path.exists(c_path): c_path = os.path.join(os.path.dirname(__file__), '..', 'class_names.json')
         if not os.path.exists(c_path): return None, [], None
         with open(c_path, 'r') as f: classes = json.load(f)
 
         model = load_model(MODEL_PATH, compile=False)
+        # Fast Grad-CAM detection
         grad_model = None
-        try:
-            for layer in reversed(model.layers):
-                try:
-                    temp_model = tf.keras.models.Model(model.inputs, [layer.output, model.output])
-                    grad_model = temp_model
-                    break
-                except: continue
-        except: grad_model = None
+        for layer in reversed(model.layers):
+            try:
+                grad_model = tf.keras.models.Model(model.inputs, [layer.output, model.output])
+                break
+            except: continue
 
         return model, classes, grad_model
     except:
@@ -148,55 +152,36 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         h_orig, w_orig = img.shape[:2]
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
-
-        # Enhanced pre-processing
-        gray = cv2.equalizeHist(gray)
         gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-
-        # More sensitive detection for webcams
-        faces = face_cascade.detectMultiScale(gray, 1.1, 3, minSize=(80, 80))
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
         if len(faces) == 0: return None, None
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
 
         # Biometric HUD Overlay
         overlay = img_res.copy()
-        c_len = int(w * 0.15); thick = 3; color = (232, 115, 26)
-        # Digital Corners (HUD style)
+        c_len = int(w * 0.1); thick = 4; color = (232, 115, 26)
         for dx, dy in [(0,0), (1,0), (0,1), (1,1)]:
             px = x + dx * w; py = y + dy * h
             cv2.line(overlay, (px, py), (px + (1-2*dx)*c_len, py), color, thick)
             cv2.line(overlay, (px, py), (px, py + (1-2*dy)*c_len), color, thick)
-
-        # Digital Grid Pattern on Face
-        for i in range(1, 4):
-            cv2.line(overlay, (x + i*w//4, y), (x + i*w//4, y + h), (255, 255, 255), 1)
-            cv2.line(overlay, (x, y + i*h//4), (x + w, y + i*h//4), (255, 255, 255), 1)
+        cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 255), 1)
 
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
-        # Multi-scale eye detection
-        eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 5, minSize=(20, 20))
-
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
         if len(eyes) < 2: return None, overlay
-
         eyes = sorted(eyes, key=lambda e: e[0])
         p1 = (x + eyes[0][0] + eyes[0][2]//2, y + eyes[0][1] + eyes[0][3]//2)
         p2 = (x + eyes[1][0] + eyes[1][2]//2, y + eyes[1][1] + eyes[1][3]//2)
-
         for p in [p1, p2]:
             cv2.drawMarker(overlay, p, (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
-            cv2.circle(overlay, p, 6, (0, 0, 255), -1)
-
+            cv2.circle(overlay, p, 5, (0, 0, 255), -1)
         cv2.line(overlay, p1, p2, (232, 115, 26), 2, cv2.LINE_AA)
 
-        # PD Calculation
         pd_mm = round((abs(p1[0] - p2[0]) / w) * 145, 1)
-
-        # Final result styling
         mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.65)
         cv2.circle(mask, center, radius, (255, 255, 255), -1)
         circular_face = cv2.bitwise_and(overlay, mask)
-        cv2.circle(circular_face, center, radius, (132, 232, 26), 4) # Green bio-ring
-
+        cv2.circle(circular_face, center, radius, (132, 232, 26), 4)
         return pd_mm, circular_face
     except: return None, None
 
@@ -240,15 +225,10 @@ if t['hub'] in menu:
                                 conv_output, preds = grad_model(input_batch)
                                 idx = np.argmax(preds[0]); loss = preds[:, idx]
                             grads = tape.gradient(loss, conv_output)
-
-                            # Robust reduction to prevent dimension errors
                             if len(grads.shape) == 4:
                                 pooled = tf.reduce_mean(grads, axis=(0, 1, 2))
                                 heatmap = np.maximum(tf.squeeze(conv_output[0] @ pooled[..., tf.newaxis]), 0)
-                            else:
-                                # Fallback if grads is not 4D (e.g. if layer selected is a dense layer)
-                                heatmap = np.zeros((conv_output.shape[1], conv_output.shape[2]))
-
+                            else: heatmap = np.zeros((conv_output.shape[1], conv_output.shape[2]))
                             heatmap /= (np.max(heatmap) if np.max(heatmap) > 0 else 1)
                             cam = cv2.addWeighted(orig_res, 0.6, cv2.resize(cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET), (224,224)), 0.4, 0)
                         else:
