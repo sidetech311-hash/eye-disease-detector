@@ -249,7 +249,7 @@ if t['hub'] in menu:
             if r['cond'] != "Normal":
                 st.warning("🚨 Clinical Referral Required.")
                 clinics = ["Dr. Agarwal's Eye Hospital", "St. Thomas Eye Hospital"]
-                for c in clinics: st.markdown(f"✅ **{c}** [🔍 Locate](https://www.google.com/maps/search/{c.replace(' ', '+')}+Accra)")
+                for c in clinics: st.markdown(f"✅ **{clinic}** [🔍 Locate](https://www.google.com/maps/search/{clinic.replace(' ', '+')}+Accra)")
 
 elif t['portal'] in menu:
     st.markdown(f"<h1 class='main-header'>📊 {t['portal']}</h1>", unsafe_allow_html=True)
