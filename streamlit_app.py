@@ -149,13 +149,23 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         h_orig, w_orig = img.shape[:2]
+        # Standardize for consistent detection
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
-        gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8)).apply(gray)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
+        # Advanced Histogram Equalization (CLAHE)
+        gray = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8)).apply(gray)
+
+        # Multi-pass face detection
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80))
+        if len(faces) == 0:
+            # Pass 2: More sensitive
+            faces = face_cascade.detectMultiScale(gray, 1.05, 3)
+
         if len(faces) == 0: return None, None
+
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
 
+        # Biometric HUD Overlay
         overlay = img_res.copy()
         c_len = int(w * 0.1); thick = 4; color = (232, 115, 26)
         for dx, dy in [(0,0), (1,0), (0,1), (1,1)]:
@@ -164,9 +174,23 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
             cv2.line(overlay, (px, py), (px, py + (1-2*dy)*c_len), color, thick)
         cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 255), 1)
 
+        # Eye ROI (Upper 60%)
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
-        eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 6, minSize=(30, 30))
-        if len(eyes) < 2: return None, overlay
+        # Multi-pass eye detection
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 5, minSize=(25, 25))
+        if len(eyes) < 2:
+            # Pass 2: More sensitive eyes
+            eyes = eye_cascade.detectMultiScale(roi_gray, 1.03, 3)
+
+        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.65)
+        cv2.circle(mask, center, radius, (255, 255, 255), -1)
+
+        if len(eyes) < 2:
+            # Found face but eyes failed - show the face box
+            circular_face = cv2.bitwise_and(overlay, mask)
+            cv2.circle(circular_face, center, radius, (26, 115, 232), 4)
+            return None, circular_face
+
         eyes = sorted(eyes, key=lambda e: e[0])
         p1 = (x + eyes[0][0] + eyes[0][2]//2, y + eyes[0][1] + eyes[0][3]//2)
         p2 = (x + eyes[1][0] + eyes[1][2]//2, y + eyes[1][1] + eyes[1][3]//2)
@@ -176,11 +200,10 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         cv2.line(overlay, p1, p2, (232, 115, 26), 2, cv2.LINE_AA)
 
         pd_mm = round((abs(p1[0] - p2[0]) / w) * 145, 1)
-        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.65)
-        cv2.circle(mask, center, radius, (255, 255, 255), -1)
         circular_face = cv2.bitwise_and(overlay, mask)
-        cv2.circle(circular_face, center, radius, (132, 232, 26), 4)
+        cv2.circle(circular_face, center, radius, (132, 232, 26), 4) # Success Green
         return pd_mm, circular_face
+    except: return None, None
     except: return None, None
 
 def is_retinal_scan(img_bytes, face_cascade):
