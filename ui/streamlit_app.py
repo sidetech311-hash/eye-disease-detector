@@ -213,11 +213,30 @@ def is_retinal_scan(img_bytes, face_cascade):
     try:
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        # 1. Face Check (Existing)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.1, 15, minSize=(int(img.shape[0]*0.3), int(img.shape[0]*0.3)))
         if len(faces) > 0: return False, "Face features detected."
-        edge_brightness = (np.mean(gray[0:10, :]) + np.mean(gray[-10:, :])) / 2
-        if edge_brightness > 60: return False, "Non-retinal image detected."
+
+        # 2. Color Signature Check (Fundus images are rich in Red/Orange)
+        # We check if the Red channel is significantly stronger than Blue
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        avg_r = np.mean(img_rgb[:,:,0])
+        avg_b = np.mean(img_rgb[:,:,2])
+        if avg_r < avg_b * 1.1: # Retinas are never "Cool" or "Gray" colored
+            return False, "Non-clinical color profile detected."
+
+        # 3. Corner Geometry Check (Fundus scans are circular with black corners)
+        h, w = gray.shape
+        corners = [
+            gray[0:15, 0:15], gray[0:15, -15:],
+            gray[-15:, 0:15], gray[-15:, -15:]
+        ]
+        avg_corner = np.mean([np.mean(c) for c in corners])
+        if avg_corner > 60: # Memes often have white/light backgrounds in corners
+            return False, "Non-retinal image detected."
+
         return True, "Valid Scan"
     except: return False, "Unknown format."
 
