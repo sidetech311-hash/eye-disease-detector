@@ -206,11 +206,23 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
     except: return None, None
 
 def is_retinal_scan(img_bytes, face_cascade):
-    nparr = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.1, 15, minSize=(int(img.shape[0]*0.3), int(img.shape[0]*0.3)))
-    return len(faces) == 0
+    try:
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # 1. Check for faces
+        faces = face_cascade.detectMultiScale(gray, 1.1, 15, minSize=(int(img.shape[0]*0.3), int(img.shape[0]*0.3)))
+        if len(faces) > 0: return False, "Face features detected."
+
+        # 2. Check for retinal characteristics (dark circular periphery)
+        h, w = gray.shape
+        edge_brightness = (np.mean(gray[0:10, :]) + np.mean(gray[-10:, :])) / 2
+        if edge_brightness > 60: # Cats/Rooms are much brighter than a fundus dark box
+            return False, "Non-retinal image detected."
+
+        return True, "Valid Scan"
+    except: return False, "Unknown format."
 
 # --- 🚀 UI LAUNCH ---
 init_db()
@@ -233,8 +245,12 @@ if t['hub'] in menu:
             if model is None: st.error("🧠 AI Brain is loading or offline. Please refresh.")
             else:
                 img_bytes = file.getvalue()
-                if not is_retinal_scan(img_bytes, face_cascade): st.warning("⚠️ Retinal scan expected, detected face features.")
-                with st.spinner("Analyzing..."):
+                is_valid, msg = is_retinal_scan(img_bytes, face_cascade)
+
+                if not is_valid:
+                    st.error(f"❌ **Invalid Input:** {msg} This model only analyzes **Internal Retinal Scans**.")
+                else:
+                    with st.spinner("Analyzing..."):
                     nparr = np.frombuffer(img_bytes, np.uint8)
                     orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR); orig_res = cv2.resize(orig, (224, 224))
                     enhanced = ben_graham_process(orig)
