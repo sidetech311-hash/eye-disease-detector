@@ -92,6 +92,16 @@ def save_case(pid, cond, conf):
     conn.execute('INSERT INTO screenings (pid, date, condition, confidence) VALUES (?,?,?,?)', (pid, date, cond, conf))
     conn.commit(); conn.close()
 
+def save_partner(name, loc, contact):
+    conn = sqlite3.connect('clinical_records.db')
+    conn.execute('INSERT INTO partners (shop_name, location, contact) VALUES (?,?,?)', (name, loc, contact))
+    conn.commit(); conn.close()
+
+def save_feedback(user, rating, comment):
+    conn = sqlite3.connect('clinical_records.db')
+    conn.execute('INSERT INTO feedback (user, rating, comment) VALUES (?,?,?)', (user, rating, comment))
+    conn.commit(); conn.close()
+
 # --- 📄 PDF REPORT GENERATOR ---
 def create_pdf_report(patient_name, diagnosis, confidence):
     pdf = FPDF()
@@ -331,6 +341,36 @@ elif t['opt'] in menu:
             st.image(st.session_state['scan_img'], use_container_width=True)
             if 'pd' in st.session_state and st.session_state['pd']:
                 st.metric("Detected PD", f"{st.session_state['pd']} mm")
+
+elif "Partner Network" in menu:
+    st.markdown(f"<h1 class='main-header'>🤝 Partner Network</h1>", unsafe_allow_html=True)
+    st.write("Register your clinic or optical shop to join the EyeCare AI professional network.")
+
+    with st.form("partner_reg"):
+        shop_name = st.text_input("Clinic / Shop Name")
+        location = st.text_input("Location (City, Area)")
+        contact = st.text_input("Contact Email / Phone")
+        if st.form_submit_button("Register for Verification"):
+            if shop_name and contact:
+                save_partner(shop_name, location, contact)
+                st.success("✅ Application sent! Our clinical team will verify your center shortly.")
+            else:
+                st.error("Please fill in the required fields.")
+
+elif "Feedback" in menu:
+    st.markdown(f"<h1 class='main-header'>💬 User Feedback</h1>", unsafe_allow_html=True)
+    st.write("Your feedback helps us improve the AI precision and clinical workflow.")
+
+    with st.form("user_feedback"):
+        user_name = st.text_input("Your Name / Role")
+        rating = st.slider("Experience Rating (1-10)", 1, 10, 8)
+        comment = st.text_area("Observations or Suggestions")
+        if st.form_submit_button("Submit Feedback"):
+            if user_name and comment:
+                save_feedback(user_name, rating, comment)
+                st.success("✅ Thank you! Your feedback has been recorded.")
+            else:
+                st.error("Please provide your name and a comment.")
 
 st.markdown("---")
 st.caption("EyeCare AI Business Suite v10.0 | Market-Ready Build | Enterprise-Grade")

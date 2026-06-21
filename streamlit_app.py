@@ -92,28 +92,31 @@ def save_case(pid, cond, conf):
     conn.execute('INSERT INTO screenings (pid, date, condition, confidence) VALUES (?,?,?,?)', (pid, date, cond, conf))
     conn.commit(); conn.close()
 
+def save_partner(name, loc, contact):
+    conn = sqlite3.connect('clinical_records.db')
+    conn.execute('INSERT INTO partners (shop_name, location, contact) VALUES (?,?,?)', (name, loc, contact))
+    conn.commit(); conn.close()
+
+def save_feedback(user, rating, comment):
+    conn = sqlite3.connect('clinical_records.db')
+    conn.execute('INSERT INTO feedback (user, rating, comment) VALUES (?,?,?)', (user, rating, comment))
+    conn.commit(); conn.close()
+
 # --- 📄 PDF REPORT GENERATOR ---
 def create_pdf_report(patient_name, diagnosis, confidence):
     pdf = FPDF()
     pdf.add_page()
-
-    # Header
     pdf.set_font("Arial", 'B', 24)
     pdf.set_text_color(26, 115, 232)
     pdf.cell(200, 20, txt="EyeCare AI Hub Pro", ln=True, align='C')
-
     pdf.set_font("Arial", 'B', 12)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(200, 10, txt="OFFICIAL CLINICAL SCREENING REPORT", ln=True, align='C')
     pdf.ln(10)
-
-    # Patient Info
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(100, 10, txt=f"Patient Name: {patient_name}")
     pdf.cell(100, 10, txt=f"Date: {datetime.datetime.now().strftime('%Y-%m-%d')}", ln=True)
     pdf.ln(5)
-
-    # Result Box
     pdf.set_fill_color(248, 249, 250)
     pdf.rect(10, 60, 190, 40, 'F')
     pdf.set_font("Arial", 'B', 16)
@@ -123,11 +126,8 @@ def create_pdf_report(patient_name, diagnosis, confidence):
     pdf.set_x(15)
     pdf.cell(180, 10, txt=f"AI Confidence Level: {confidence:.1%}", ln=True)
     pdf.ln(10)
-
-    # Disclaimer
     pdf.set_font("Arial", 'I', 10)
     pdf.multi_cell(0, 5, txt="DISCLAIMER: This is an AI-generated screening report. It is NOT a final medical diagnosis. Please present this report to a licensed ophthalmologist for a comprehensive clinical examination.")
-
     return pdf.output(dest='S').encode('latin-1')
 
 # --- 🧠 AI ENGINE ---
@@ -152,23 +152,18 @@ def load_clinical_brain():
         except Exception as e:
             st.error(f"Download Error: {e}")
             return None, [], None
-
     try:
         c_path = 'class_names.json'
         if not os.path.exists(c_path): c_path = os.path.join(os.path.dirname(__file__), '..', 'class_names.json')
         if not os.path.exists(c_path): return None, [], None
         with open(c_path, 'r') as f: classes = json.load(f)
-
         model = load_model(MODEL_PATH, compile=False)
-
-        # Build Grad-CAM model
         grad_model = None
         for layer in reversed(model.layers):
             try:
                 grad_model = tf.keras.models.Model(model.inputs, [layer.output, model.output])
                 break
             except: continue
-
         return model, classes, grad_model
     except Exception as e:
         st.error(f"🧠 Brain Load Failure: {e}")
@@ -193,18 +188,14 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         img_res = cv2.resize(img, (800, int(800 * h_orig / w_orig)))
         gray = cv2.cvtColor(img_res, cv2.COLOR_BGR2GRAY)
         gray = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8)).apply(gray)
-
         faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80))
         if len(faces) == 0: faces = face_cascade.detectMultiScale(gray, 1.05, 3)
         if len(faces) == 0: return None, None
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
-
         mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.65)
         cv2.circle(mask, center, radius, (255, 255, 255), -1)
-
         roi_gray = gray[y : y + int(h * 0.6), x : x + w]
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 5, minSize=(25, 25))
-
         overlay = img_res.copy()
         if len(eyes) >= 2:
             eyes = sorted(eyes, key=lambda e: e[0])
@@ -213,7 +204,6 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
             cv2.line(overlay, p1, p2, (232, 115, 232), 2)
             pd_mm = round((abs(p1[0] - p2[0]) / w) * 145, 1)
         else: pd_mm = None
-
         circular_face = cv2.bitwise_and(overlay, mask)
         cv2.circle(circular_face, center, radius, (26, 115, 232), 4)
         return pd_mm, circular_face
@@ -246,10 +236,16 @@ else: st.sidebar.warning("🟡 System Initializing...")
 
 # --- NAVIGATION LOGIC FIX ---
 nav_options = ["🏠 Home / Dashboard", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", "🤝 Partner Network", "💬 Feedback"]
-if 'menu' not in st.session_state:
-    st.session_state.menu = nav_options[0]
 
-menu = st.sidebar.radio("Main Navigation", nav_options, key="menu")
+if 'menu_index' not in st.session_state:
+    st.session_state.menu_index = 0
+
+# Set index from session state
+menu = st.sidebar.radio("Main Navigation", nav_options, index=st.session_state.menu_index)
+
+# Ensure session state stays updated if user manually clicks
+if nav_options.index(menu) != st.session_state.menu_index:
+    st.session_state.menu_index = nav_options.index(menu)
 
 if menu == "🏠 Home / Dashboard":
     st.markdown(f"<h1 class='main-header'>Welcome to {t['title']}</h1>", unsafe_allow_html=True)
@@ -258,7 +254,7 @@ if menu == "🏠 Home / Dashboard":
         st.write("This professional AI suite is designed for retinal screening and clinical business management.")
         st.info("💡 **Quick Tip:** Use the Diagnostic Hub for internal eye scans and the Optical Assistant for facial measurements.")
         if st.button("🚀 Start New Clinical Screening", use_container_width=True):
-            st.session_state.menu = f"🔬 {t['hub']}"
+            st.session_state.menu_index = 1 # Index for the Hub
             st.rerun()
     with col2:
         st.metric("Clinic Accuracy", "94.2%", delta="Certified")
@@ -345,6 +341,36 @@ elif t['opt'] in menu:
             st.image(st.session_state['scan_img'], use_container_width=True)
             if 'pd' in st.session_state and st.session_state['pd']:
                 st.metric("Detected PD", f"{st.session_state['pd']} mm")
+
+elif "Partner Network" in menu:
+    st.markdown(f"<h1 class='main-header'>🤝 Partner Network</h1>", unsafe_allow_html=True)
+    st.write("Register your clinic or optical shop to join the EyeCare AI professional network.")
+
+    with st.form("partner_reg"):
+        shop_name = st.text_input("Clinic / Shop Name")
+        location = st.text_input("Location (City, Area)")
+        contact = st.text_input("Contact Email / Phone")
+        if st.form_submit_button("Register for Verification"):
+            if shop_name and contact:
+                save_partner(shop_name, location, contact)
+                st.success("✅ Application sent! Our clinical team will verify your center shortly.")
+            else:
+                st.error("Please fill in the required fields.")
+
+elif "Feedback" in menu:
+    st.markdown(f"<h1 class='main-header'>💬 User Feedback</h1>", unsafe_allow_html=True)
+    st.write("Your feedback helps us improve the AI precision and clinical workflow.")
+
+    with st.form("user_feedback"):
+        user_name = st.text_input("Your Name / Role")
+        rating = st.slider("Experience Rating (1-10)", 1, 10, 8)
+        comment = st.text_area("Observations or Suggestions")
+        if st.form_submit_button("Submit Feedback"):
+            if user_name and comment:
+                save_feedback(user_name, rating, comment)
+                st.success("✅ Thank you! Your feedback has been recorded.")
+            else:
+                st.error("Please provide your name and a comment.")
 
 st.markdown("---")
 st.caption("EyeCare AI Business Suite v10.0 | Market-Ready Build | Enterprise-Grade")
