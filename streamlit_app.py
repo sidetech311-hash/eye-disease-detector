@@ -16,6 +16,7 @@ import datetime
 import sqlite3
 import requests
 import hashlib
+from fpdf import FPDF
 
 # --- 🌍 LOCALIZATION & CONFIG ---
 LANG = {
@@ -90,6 +91,44 @@ def save_case(pid, cond, conf):
     date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     conn.execute('INSERT INTO screenings (pid, date, condition, confidence) VALUES (?,?,?,?)', (pid, date, cond, conf))
     conn.commit(); conn.close()
+
+# --- 📄 PDF REPORT GENERATOR ---
+def create_pdf_report(patient_name, diagnosis, confidence):
+    pdf = FPDF()
+    pdf.add_page()
+
+    # Header
+    pdf.set_font("Arial", 'B', 24)
+    pdf.set_text_color(26, 115, 232)
+    pdf.cell(200, 20, txt="EyeCare AI Hub Pro", ln=True, align='C')
+
+    pdf.set_font("Arial", 'B', 12)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(200, 10, txt="OFFICIAL CLINICAL SCREENING REPORT", ln=True, align='C')
+    pdf.ln(10)
+
+    # Patient Info
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(100, 10, txt=f"Patient Name: {patient_name}")
+    pdf.cell(100, 10, txt=f"Date: {datetime.datetime.now().strftime('%Y-%m-%d')}", ln=True)
+    pdf.ln(5)
+
+    # Result Box
+    pdf.set_fill_color(248, 249, 250)
+    pdf.rect(10, 60, 190, 40, 'F')
+    pdf.set_font("Arial", 'B', 16)
+    pdf.set_xy(15, 70)
+    pdf.cell(180, 10, txt=f"Preliminary Diagnosis: {diagnosis}", ln=True)
+    pdf.set_font("Arial", '', 12)
+    pdf.set_x(15)
+    pdf.cell(180, 10, txt=f"AI Confidence Level: {confidence:.1%}", ln=True)
+    pdf.ln(10)
+
+    # Disclaimer
+    pdf.set_font("Arial", 'I', 10)
+    pdf.multi_cell(0, 5, txt="DISCLAIMER: This is an AI-generated screening report. It is NOT a final medical diagnosis. Please present this report to a licensed ophthalmologist for a comprehensive clinical examination.")
+
+    return pdf.output(dest='S').encode('latin-1')
 
 # --- 🧠 AI ENGINE ---
 @st.cache_resource
@@ -171,7 +210,7 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
             eyes = sorted(eyes, key=lambda e: e[0])
             p1 = (x + eyes[0][0] + eyes[0][2]//2, y + eyes[0][1] + eyes[0][3]//2)
             p2 = (x + eyes[1][0] + eyes[1][2]//2, y + eyes[1][1] + eyes[1][3]//2)
-            cv2.line(overlay, p1, p2, (232, 115, 26), 2)
+            cv2.line(overlay, p1, p2, (232, 115, 232), 2)
             pd_mm = round((abs(p1[0] - p2[0]) / w) * 145, 1)
         else: pd_mm = None
 
@@ -205,7 +244,12 @@ st.sidebar.markdown("---")
 if model: st.sidebar.success("🟢 System Online")
 else: st.sidebar.warning("🟡 System Initializing...")
 
-menu = st.sidebar.radio("Main Navigation", ["🏠 Home / Dashboard", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", "🤝 Partner Network", "💬 Feedback"])
+# --- NAVIGATION LOGIC FIX ---
+nav_options = ["🏠 Home / Dashboard", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", "🤝 Partner Network", "💬 Feedback"]
+if 'menu' not in st.session_state:
+    st.session_state.menu = nav_options[0]
+
+menu = st.sidebar.radio("Main Navigation", nav_options, key="menu")
 
 if menu == "🏠 Home / Dashboard":
     st.markdown(f"<h1 class='main-header'>Welcome to {t['title']}</h1>", unsafe_allow_html=True)
@@ -262,6 +306,10 @@ elif t['hub'] in menu:
                 st.markdown(f"<div style='background:white;padding:20px;border-radius:15px;border:1px solid #eee;'>Diagnosis: <b>{r['cond']}</b><br>Confidence: <b>{r['conf']:.1%}</b></div>", unsafe_allow_html=True)
                 st.image(r['cam'], use_container_width=True, caption="Explainability Map")
 
+                # Market Feature: Export PDF
+                pdf_bytes = create_pdf_report(p_name, r['cond'], r['conf'])
+                st.download_button("📥 Download Patient Clinical Report (PDF)", data=pdf_bytes, file_name=f"Report_{p_name}.pdf", mime="application/pdf", use_container_width=True)
+
     with tabs[1]:
         st.write("1. Ensure the room is dimly lit.\n2. Position the retinal lens 2cm from the eye.\n3. Hold the camera steady until the scan-line passes.")
 
@@ -299,4 +347,4 @@ elif t['opt'] in menu:
                 st.metric("Detected PD", f"{st.session_state['pd']} mm")
 
 st.markdown("---")
-st.caption("EyeCare AI Business Suite v9.0 | Fluid Experience | Enterprise-Ready")
+st.caption("EyeCare AI Business Suite v10.0 | Market-Ready Build | Enterprise-Grade")
