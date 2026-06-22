@@ -217,15 +217,14 @@ def is_retinal_scan(img_bytes, face_cascade):
         # 1. Face Check (Existing)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.1, 15, minSize=(int(img.shape[0]*0.3), int(img.shape[0]*0.3)))
-        if len(faces) > 0: return False, "Face features detected."
+        if len(faces) > 0: return False, "Face/External features detected. This hub is for internal retinal scans only."
 
         # 2. Color Signature Check (Fundus images are rich in Red/Orange)
-        # We check if the Red channel is significantly stronger than Blue
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         avg_r = np.mean(img_rgb[:,:,0])
         avg_b = np.mean(img_rgb[:,:,2])
-        if avg_r < avg_b * 1.1: # Retinas are never "Cool" or "Gray" colored
-            return False, "Non-clinical color profile detected."
+        if avg_r < avg_b * 1.1:
+            return False, "Non-clinical color profile. Expected a warm-toned internal Fundus scan."
 
         # 3. Corner Geometry Check (Fundus scans are circular with black corners)
         h, w = gray.shape
@@ -234,11 +233,11 @@ def is_retinal_scan(img_bytes, face_cascade):
             gray[-15:, 0:15], gray[-15:, -15:]
         ]
         avg_corner = np.mean([np.mean(c) for c in corners])
-        if avg_corner > 60: # Memes often have white/light backgrounds in corners
-            return False, "Non-retinal image detected."
+        if avg_corner > 60:
+            return False, "Invalid scan format. Genuine retinal scans must be circular with a dark background."
 
         return True, "Valid Scan"
-    except: return False, "Unknown format."
+    except: return False, "Unknown image format. Please upload a clinical JPEG/PNG scan."
 
 # --- 🚀 UI LAUNCH ---
 init_db()
