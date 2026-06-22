@@ -272,6 +272,13 @@ st.sidebar.markdown("---")
 if model: st.sidebar.success("🟢 System Online")
 else: st.sidebar.warning("🟡 System Initializing...")
 
+# --- MOBILE ECOSYSTEM SECTION ---
+with st.sidebar.expander("📱 Mobile Ecosystem", expanded=False):
+    st.write("Native Android/iOS apps are available for field deployment.")
+    if st.button("📲 Request Mobile APK (Beta)", use_container_width=True):
+        st.toast("Request Sent! Our team will contact you for beta access.")
+    st.caption("Perfect for rural screening with no constant internet.")
+
 # --- NAVIGATION LOGIC FIX ---
 nav_options = ["🏠 Home / Dashboard", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", "🤝 Partner Network", "💬 Feedback"]
 

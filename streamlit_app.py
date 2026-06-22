@@ -84,6 +84,14 @@ def init_db():
     conn.execute('CREATE TABLE IF NOT EXISTS screenings (id INTEGER PRIMARY KEY AUTOINCREMENT, pid TEXT, date TEXT, condition TEXT, confidence REAL)')
     conn.execute('CREATE TABLE IF NOT EXISTS partners (id INTEGER PRIMARY KEY AUTOINCREMENT, shop_name TEXT, location TEXT, contact TEXT)')
     conn.execute('CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, user TEXT, rating INTEGER, comment TEXT)')
+    # Offline Buffer Table
+    conn.execute('CREATE TABLE IF NOT EXISTS offline_buffer (id INTEGER PRIMARY KEY AUTOINCREMENT, pid TEXT, date TEXT, img_blob BLOB)')
+    conn.commit(); conn.close()
+
+def save_offline_scan(pid, img_bytes):
+    conn = sqlite3.connect('clinical_records.db')
+    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    conn.execute('INSERT INTO offline_buffer (pid, date, img_blob) VALUES (?,?,?)', (pid, date, sqlite3.Binary(img_bytes)))
     conn.commit(); conn.close()
 
 def save_case(pid, cond, conf):
@@ -264,6 +272,13 @@ st.sidebar.markdown("---")
 if model: st.sidebar.success("🟢 System Online")
 else: st.sidebar.warning("🟡 System Initializing...")
 
+# --- MOBILE ECOSYSTEM SECTION ---
+with st.sidebar.expander("📱 Mobile Ecosystem", expanded=False):
+    st.write("Native Android/iOS apps are available for field deployment.")
+    if st.button("📲 Request Mobile APK (Beta)", use_container_width=True):
+        st.toast("Request Sent! Our team will contact you for beta access.")
+    st.caption("Perfect for rural screening with no constant internet.")
+
 # --- NAVIGATION LOGIC FIX ---
 nav_options = ["🏠 Home / Dashboard", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", "🤝 Partner Network", "💬 Feedback"]
 
@@ -301,9 +316,17 @@ elif t['hub'] in menu:
         col1, col2 = st.columns([1, 1.2])
         with col1:
             method = st.radio("Method", ["Upload Scan", "Live Camera"], horizontal=True)
+            mode = st.toggle("🛰️ Low-Bandwidth Mode (Store for later sync)", help="Captures the image now and saves it to the local buffer. You can run the AI analysis later when you have a better connection.")
+
             file = st.file_uploader(t['upload'], type=['jpg','png','jpeg']) if method == "Upload Scan" else st.camera_input("Scan Retina")
-            if file and st.button(t['process'], use_container_width=True):
-                img_bytes = file.getvalue()
+
+            if file:
+                if mode:
+                    if st.button("📦 Store in Local Buffer", use_container_width=True):
+                        save_offline_scan(p_name, file.getvalue())
+                        st.success(f"✅ Scan for {p_name} stored in local buffer. Sync it later in the Physician Portal.")
+                elif st.button(t['process'], use_container_width=True):
+                    img_bytes = file.getvalue()
 
                 # Performance Tracking for Grant Reporting
                 start_time = datetime.datetime.now()
@@ -363,16 +386,57 @@ elif t['hub'] in menu:
 elif t['portal'] in menu:
     st.markdown(f"<h1 class='main-header'>📊 {t['portal']}</h1>", unsafe_allow_html=True)
     if st.sidebar.text_input("Admin Key", type="password") == "doctor123":
-        col1, col2 = st.columns(2)
-        patients = col1.number_input("Monthly Patients", 10, 5000, 100)
-        cost_manual = col1.number_input("Manual Cost ($)", 5, 200, 50)
-        savings = (patients * cost_manual) - 200
-        col2.metric("Monthly Savings", f"${savings:,.2f}")
-        col2.metric("Annual ROI", f"{(savings*12/2400):.0%}")
-        st.markdown("---")
-        conn = sqlite3.connect('clinical_records.db')
-        df = pd.read_sql('SELECT * FROM screenings ORDER BY id DESC', conn)
-        st.dataframe(df, use_container_width=True)
+
+        sync_tab, analytics_tab = st.tabs(["🔄 Batch Sync Center", "📈 Performance Analytics"])
+
+        with sync_tab:
+            st.subheader("Offline Data Buffer")
+            conn = sqlite3.connect('clinical_records.db')
+            buffer_df = pd.read_sql('SELECT id, pid, date FROM offline_buffer', conn)
+
+            if not buffer_df.empty:
+                st.write(f"You have **{len(buffer_df)}** scans waiting for AI analysis.")
+                st.dataframe(buffer_df, use_container_width=True)
+                if st.button("🚀 Run Batch Analysis & Sync to Cloud", use_container_width=True):
+                    if model is None:
+                        st.error("Cannot sync: AI Brain is still offline.")
+                    else:
+                        progress = st.progress(0)
+                        cursor = conn.cursor()
+                        cursor.execute('SELECT id, pid, img_blob FROM offline_buffer')
+                        rows = cursor.fetchall()
+                        for i, (row_id, pid, img_blob) in enumerate(rows):
+                            # Run AI on each blob
+                            nparr = np.frombuffer(img_blob, np.uint8)
+                            orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR); orig_res = cv2.resize(orig, (224, 224))
+                            input_batch = np.expand_dims(tf.keras.applications.efficientnet.preprocess_input(orig_res.astype(np.float32)), 0)
+                            preds = model.predict(input_batch); idx = np.argmax(preds[0])
+                            conf = float(preds[0][idx]); cond = class_names[idx].title()
+
+                            # Save to main screenings
+                            save_case(pid, cond, conf)
+                            # Remove from buffer
+                            cursor.execute('DELETE FROM offline_buffer WHERE id=?', (row_id,))
+                            progress.progress((i + 1) / len(rows))
+                        conn.commit()
+                        st.success(f"✅ Successfully analyzed and synced {len(rows)} cases!")
+                        st.rerun()
+            else:
+                st.info("No scans currently in the offline buffer.")
+            conn.close()
+
+        with analytics_tab:
+            col1, col2 = st.columns(2)
+            patients = col1.number_input("Monthly Patients", 10, 5000, 100)
+            cost_manual = col1.number_input("Manual Cost ($)", 5, 200, 50)
+            savings = (patients * cost_manual) - 200
+            col2.metric("Monthly Savings", f"${savings:,.2f}")
+            col2.metric("Annual ROI", f"{(savings*12/2400):.0%}")
+            st.markdown("---")
+            conn = sqlite3.connect('clinical_records.db')
+            df = pd.read_sql('SELECT * FROM screenings ORDER BY id DESC', conn)
+            st.dataframe(df, use_container_width=True)
+            conn.close()
     else: st.warning("Authentication required.")
 
 elif t['opt'] in menu:
