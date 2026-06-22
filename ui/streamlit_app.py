@@ -214,30 +214,35 @@ def is_retinal_scan(img_bytes, face_cascade):
         nparr = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # 1. Face Check (Existing)
+        # 1. Face Check (Stay)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.1, 15, minSize=(int(img.shape[0]*0.3), int(img.shape[0]*0.3)))
-        if len(faces) > 0: return False, "Face/External features detected. This hub is for internal retinal scans only."
+        if len(faces) > 0: return False, "Face/External features detected."
 
-        # 2. Color Signature Check (Fundus images are rich in Red/Orange)
+        # 2. Blue Channel Check (Retinas have almost NO blue)
+        # Flags and standard photos have high blue/white levels.
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        avg_r = np.mean(img_rgb[:,:,0])
         avg_b = np.mean(img_rgb[:,:,2])
-        if avg_r < avg_b * 1.1:
-            return False, "Non-clinical color profile. Expected a warm-toned internal Fundus scan."
+        if avg_b > 70: # Real fundus blue levels are usually < 30
+            return False, "Non-clinical color profile (High Blue/White detected)."
 
-        # 3. Corner Geometry Check (Fundus scans are circular with black corners)
-        h, w = gray.shape
+        # 3. Flatness Check (Entropy)
+        # Biological tissue has texture. Digital flags have flat blocks of color.
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        if laplacian_var < 100: # Flags are "too perfect/smooth" for biological tissue
+            return False, "Digital/Flat image detected. Expected biological texture."
+
+        # 4. Corner Geometry Check (Stricter)
         corners = [
-            gray[0:15, 0:15], gray[0:15, -15:],
-            gray[-15:, 0:15], gray[-15:, -15:]
+            gray[0:20, 0:20], gray[0:20, -20:],
+            gray[-20:, 0:20], gray[-20:, -20:]
         ]
         avg_corner = np.mean([np.mean(c) for c in corners])
-        if avg_corner > 60:
-            return False, "Invalid scan format. Genuine retinal scans must be circular with a dark background."
+        if avg_corner > 40: # Lowered threshold from 60 to 40 for tighter security
+            return False, "Invalid scan format. Genuine scans must have a dark circular frame."
 
         return True, "Valid Scan"
-    except: return False, "Unknown image format. Please upload a clinical JPEG/PNG scan."
+    except: return False, "Unknown image format."
 
 # --- 🚀 UI LAUNCH ---
 init_db()
