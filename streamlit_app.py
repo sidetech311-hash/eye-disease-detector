@@ -241,6 +241,13 @@ def is_retinal_scan(img_bytes, face_cascade):
         if avg_corner > 40: # Lowered threshold from 60 to 40 for tighter security
             return False, "Invalid scan format. Genuine scans must have a dark circular frame."
 
+        # 5. Circularity Check (The "Planet" test)
+        # Fundus scans are much brighter in the center than the edges
+        center_h, center_w = h // 2, w // 2
+        center_brightness = np.mean(gray[center_h-20:center_h+20, center_w-20:center_w+20])
+        if center_brightness < avg_corner * 1.5:
+            return False, "Image lacks retinal geometry (Circular disc not detected)."
+
         return True, "Valid Scan"
     except: return False, "Unknown image format."
 
