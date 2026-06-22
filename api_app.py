@@ -54,9 +54,18 @@ async def analyze_eye(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
 
     try:
-        orig = cv2.imread(temp_path)
+        # Read file into memory and decode
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
         if orig is None:
-            raise ValueError("Invalid image file")
+            raise HTTPException(status_code=400, detail="Invalid image format.")
+
+        # Hardware Safety: Immediate resize to prevent RAM spikes
+        h, w = orig.shape[:2]
+        if w > 1000 or h > 1000:
+            orig = cv2.resize(orig, (800, 800))
 
         enhanced = ben_graham_process(orig)
         input_batch = np.expand_dims(tf_keras.applications.efficientnet.preprocess_input(enhanced.astype(np.float32)), 0)
