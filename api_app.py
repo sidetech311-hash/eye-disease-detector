@@ -60,7 +60,7 @@ def home():
 
 @app.get("/ping")
 def ping():
-    return {"status": "ok", "timestamp": str(datetime.datetime.now())}
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
