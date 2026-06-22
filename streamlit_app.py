@@ -304,6 +304,10 @@ elif t['hub'] in menu:
             file = st.file_uploader(t['upload'], type=['jpg','png','jpeg']) if method == "Upload Scan" else st.camera_input("Scan Retina")
             if file and st.button(t['process'], use_container_width=True):
                 img_bytes = file.getvalue()
+
+                # Performance Tracking for Grant Reporting
+                start_time = datetime.datetime.now()
+
                 is_valid, msg = is_retinal_scan(img_bytes, face_cascade)
                 if not is_valid: st.error(f"❌ **Invalid:** {msg}")
                 else:
@@ -312,6 +316,7 @@ elif t['hub'] in menu:
                         orig = cv2.imdecode(nparr, cv2.IMREAD_COLOR); orig_res = cv2.resize(orig, (224, 224))
                         enhanced = ben_graham_process(orig)
                         input_batch = np.expand_dims(tf.keras.applications.efficientnet.preprocess_input(orig_res.astype(np.float32)), 0)
+
                         try:
                             if grad_model:
                                 with tf.GradientTape() as tape:
@@ -323,8 +328,13 @@ elif t['hub'] in menu:
                                 cam = cv2.addWeighted(orig_res, 0.6, cv2.resize(cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET), (224,224)), 0.4, 0)
                             else: preds = model.predict(input_batch); idx = np.argmax(preds[0]); cam = orig_res
                         except: preds = model.predict(input_batch); idx = np.argmax(preds[0]); cam = orig_res
+
                         conf = float(preds[0][idx]); cond = class_names[idx].title()
-                        st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "enhanced": enhanced}
+
+                        # Calculate latency for technical audit
+                        latency = (datetime.datetime.now() - start_time).total_seconds()
+
+                        st.session_state['res'] = {"cond": cond, "conf": conf, "cam": cam, "enhanced": enhanced, "latency": latency}
                         save_case(p_name, cond, conf)
         with col2:
             if 'res' in st.session_state:
@@ -332,12 +342,19 @@ elif t['hub'] in menu:
                 st.markdown(f"<div style='background:white;padding:20px;border-radius:15px;border:1px solid #eee;'>Diagnosis: <b>{r['cond']}</b><br>Confidence: <b>{r['conf']:.1%}</b></div>", unsafe_allow_html=True)
                 st.image(r['cam'], use_container_width=True, caption="Explainability Map")
 
+                # Technical Audit Display (Grant Ready)
+                st.caption(f"⏱️ AI Inference Speed: {r['latency']:.2f}s | Hardware: GPU-Optimized Cloud")
+
                 # Market Feature: Export PDF
                 pdf_bytes = create_pdf_report(p_name, r['cond'], r['conf'])
                 st.download_button("📥 Download Patient Clinical Report (PDF)", data=pdf_bytes, file_name=f"Report_{p_name}.pdf", mime="application/pdf", use_container_width=True)
 
     with tabs[1]:
-        st.write("1. Ensure the room is dimly lit.\n2. Position the retinal lens 2cm from the eye.\n3. Hold the camera steady until the scan-line passes.")
+        st.info("📖 **User Guide: How to perform a valid retinal scan**")
+        st.write("1. **Lighting**: Ensure the room is dimly lit to allow the patient's pupil to dilate naturally.\n"
+                 "2. **Hardware**: Use a 20D macro lens or a portable smartphone Fundus attachment.\n"
+                 "3. **Positioning**: Align the lens 2-3cm from the eye. Wait for the orange 'Neural Pulse' grid to turn green.\n"
+                 "4. **Stability**: Hold the phone steady until the scan-line finishes its pass.")
 
     with tabs[2]:
         clinics = ["Dr. Agarwal's Eye Hospital", "St. Thomas Eye Hospital", "Advanced Eyecare"]
