@@ -8,6 +8,7 @@ import os
 import shutil
 import json
 import requests
+import datetime
 
 app = FastAPI(title="EyeCare AI API")
 
@@ -56,6 +57,10 @@ async def analyze_eye(file: UploadFile = File(...)):
 @app.get("/")
 def home():
     return {"service": "EyeCare AI API", "status": "Online", "endpoint": "/analyze/"}
+
+@app.get("/ping")
+def ping():
+    return {"status": "ok", "timestamp": str(datetime.datetime.now())}
 
 if __name__ == "__main__":
     import uvicorn
