@@ -200,19 +200,43 @@ def get_pd(img_bytes, face_cascade, eye_cascade):
         faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80))
         if len(faces) == 0: faces = face_cascade.detectMultiScale(gray, 1.05, 3)
         if len(faces) == 0: return None, None
+
         x, y, w, h = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)[0]
-        mask = np.zeros_like(img_res); center = (x + w//2, y + h//2); radius = int(max(w, h) * 0.65)
-        cv2.circle(mask, center, radius, (255, 255, 255), -1)
-        roi_gray = gray[y : y + int(h * 0.6), x : x + w]
+
+        # --- 🤖 SMART AUTO-ZOOM ---
+        pad = int(w * 0.2)
+        y1, y2 = max(0, y - pad), min(img_res.shape[0], y + h + pad)
+        x1, x2 = max(0, x - pad), min(img_res.shape[1], x + w + pad)
+        face_zoom = img_res[y1:y2, x1:x2]
+        gray_zoom = cv2.cvtColor(face_zoom, cv2.COLOR_BGR2GRAY)
+
+        # --- AI CALIBRATION HUD ---
+        overlay = face_zoom.copy()
+        zh, zw = face_zoom.shape[:2]
+        color = (232, 115, 232); thick = 3; clen = int(zw * 0.1)
+        # Target Brackets
+        cv2.line(overlay, (0,0), (clen,0), color, thick); cv2.line(overlay, (0,0), (0,clen), color, thick)
+        cv2.line(overlay, (zw,0), (zw-clen,0), color, thick); cv2.line(overlay, (zw,0), (zw,clen), color, thick)
+        cv2.line(overlay, (0,zh), (clen,zh), color, thick); cv2.line(overlay, (0,zh), (0,zh-clen), color, thick)
+        cv2.line(overlay, (zw,zh), (zw-clen,zh), color, thick); cv2.line(overlay, (zw,zh), (zw,zh-clen), color, thick)
+
+        roi_gray = gray_zoom[int(zh*0.2):int(zh*0.6), :]
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.05, 5, minSize=(25, 25))
-        overlay = img_res.copy()
+
         if len(eyes) >= 2:
             eyes = sorted(eyes, key=lambda e: e[0])
-            p1 = (x + eyes[0][0] + eyes[0][2]//2, y + eyes[0][1] + eyes[0][3]//2)
-            p2 = (x + eyes[1][0] + eyes[1][2]//2, y + eyes[1][1] + eyes[1][3]//2)
-            cv2.line(overlay, p1, p2, (232, 115, 232), 2)
-            pd_mm = round((abs(p1[0] - p2[0]) / w) * 145, 1)
+            p1 = (eyes[0][0] + eyes[0][2]//2, eyes[0][1] + eyes[0][3]//2 + int(zh*0.2))
+            p2 = (eyes[1][0] + eyes[1][2]//2, eyes[1][1] + eyes[1][3]//2 + int(zh*0.2))
+            # Draw Crosshairs
+            for p in [p1, p2]:
+                cv2.drawMarker(overlay, p, (0, 255, 0), cv2.MARKER_CROSS, 30, 2)
+                cv2.circle(overlay, p, 10, (255, 255, 255), 1)
+            cv2.line(overlay, p1, p2, (232, 115, 26), 2)
+            pd_mm = round((abs(p1[0] - p2[0]) / zw) * 155, 1)
         else: pd_mm = None
+
+        mask = np.zeros_like(face_zoom); center = (zw//2, zh//2); radius = int(min(zw, zh) * 0.45)
+        cv2.circle(mask, center, radius, (255, 255, 255), -1)
         circular_face = cv2.bitwise_and(overlay, mask)
         cv2.circle(circular_face, center, radius, (26, 115, 232), 4)
         return pd_mm, circular_face
