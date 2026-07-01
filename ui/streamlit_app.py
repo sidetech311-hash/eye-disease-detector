@@ -25,6 +25,12 @@ LANG = {
         "hub": "Digital Clinic", "portal": "Physician Portal", "opt": "Optical Assistant",
         "name": "Patient Name", "upload": "Upload Retinal Scan", "process": "Run Analysis",
         "roi": "Business Analytics", "partner": "Partner Registration"
+    },
+    "Twi (Ghana)": {
+        "title": "EyeCare AI Hub Pro",
+        "hub": "Ayaresabea", "portal": "Dɔkota Mpanyinfoɔ", "opt": "Ani nkrataa",
+        "name": "Ayarefoɔ Din", "upload": "Fa Mfonini Ma AI", "process": "Hwɛ Mu",
+        "roi": "Sika ne Mpuntuo", "partner": "Kyerɛ wo din"
     }
 }
 
@@ -268,7 +274,11 @@ def is_retinal_scan(img_bytes, face_cascade):
 init_db()
 model, class_names, grad_model = load_clinical_brain()
 face_cascade, eye_cascade = load_cascades()
-t = LANG["English"]
+
+# --- 🌍 LOCALIZATION SELECTOR ---
+if 'lang' not in st.session_state: st.session_state.lang = "English"
+selected_lang = st.sidebar.selectbox("🌐 Choose Language", list(LANG.keys()), index=0)
+t = LANG[selected_lang]
 
 # --- SIDEBAR NAV ---
 st.sidebar.markdown(f"<h2 style='text-align: center; color: #1a73e8;'>👁️ EyeCare AI</h2>", unsafe_allow_html=True)
@@ -371,10 +381,21 @@ elif t['portal'] in menu:
         c1.metric("Total Screenings", len(df))
         today = datetime.datetime.now().strftime("%Y-%m-%d")
         c2.metric("Today's Volume", len(df[df['date'].str.contains(today)]))
-        avg_conf = df['confidence'].mean() if not df.empty else 0
-        c3.metric("Avg. AI Confidence", f"{avg_conf:.1%}")
+
+        # Financial Impact Logic (Grant-Ready Metric)
+        # Avg cost of manual screening in GH is ~$50. AI cost is ~$0.50.
+        savings = len(df) * 49.50
+        c3.metric("Estimated Clinic Savings", f"${savings:,.0f}", delta="USD")
 
         st.markdown("---")
+
+        # --- DATA VISUALIZATION FOR GRANTS ---
+        if not df.empty:
+            st.subheader("📈 Regional Disease Trends")
+            # Create a distribution chart
+            dist = df['condition'].value_counts()
+            st.bar_chart(dist, color="#1a73e8")
+            st.caption("AI-Powered epidemiological tracking for regional health planning.")
 
         sync_tab, history_tab = st.tabs(["🔄 Batch Sync Center", "📋 Clinical History & Search"])
 
