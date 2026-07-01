@@ -22,15 +22,52 @@ from fpdf import FPDF
 LANG = {
     "English": {
         "title": "EyeCare AI Hub Pro",
+        "home": "Home / Dashboard",
         "hub": "Digital Clinic", "portal": "Physician Portal", "opt": "Optical Assistant",
         "name": "Patient Name", "upload": "Upload Retinal Scan", "process": "Run Analysis",
-        "roi": "Business Analytics", "partner": "Partner Registration"
+        "roi": "Business Analytics", "partner": "Partner Registration", "feedback": "Feedback"
     },
     "Twi (Ghana)": {
         "title": "EyeCare AI Hub Pro",
+        "home": "Fie / Dwumadie",
         "hub": "Ayaresabea", "portal": "Dɔkota Mpanyinfoɔ", "opt": "Ani nkrataa",
         "name": "Ayarefoɔ Din", "upload": "Fa Mfonini Ma AI", "process": "Hwɛ Mu",
-        "roi": "Sika ne Mpuntuo", "partner": "Kyerɛ wo din"
+        "roi": "Sika ne Mpuntuo", "partner": "Kyerɛ wo din", "feedback": "Kyerɛ wo nneyɛe"
+    },
+    "French (Français)": {
+        "title": "EyeCare AI Hub Pro",
+        "home": "Accueil / Tableau de bord",
+        "hub": "Clinique Digitale", "portal": "Portail Médecin", "opt": "Assistant Optique",
+        "name": "Nom du Patient", "upload": "Télécharger le Scan", "process": "Lancer l'Analyse",
+        "roi": "Analyses Commerciales", "partner": "Inscription Partenaire", "feedback": "Commentaires"
+    },
+    "Spanish (Español)": {
+        "title": "EyeCare AI Hub Pro",
+        "home": "Inicio / Tablero",
+        "hub": "Clínica Digital", "portal": "Portal del Médico", "opt": "Asistente Óptico",
+        "name": "Nombre del Paciente", "upload": "Cargar Escaneo", "process": "Ejecutar Análisis",
+        "roi": "Análisis de Negocios", "partner": "Registro de Socios", "feedback": "Comentarios"
+    },
+    "Ga (Accra)": {
+        "title": "EyeCare AI Hub Pro",
+        "home": "Shia / Nitsumɔ",
+        "hub": "Hehelɔ", "portal": "Tsofatse Kwɛlɔ", "opt": "Ani Akwataa",
+        "name": "Gbeyei Gbɛi", "upload": "Wo Mfoniri", "process": "Kpaa Mli",
+        "roi": "Shika Gbɛjianɔto", "partner": "Kyerɛ wo din", "feedback": "Gbeyei sane"
+    },
+    "Arabic (العربية)": {
+        "title": "EyeCare AI Hub Pro",
+        "home": "الرئيسية / لوحة القيادة",
+        "hub": "العيادة الرقمية", "portal": "بوابة الطبيب", "opt": "المساعد البصري",
+        "name": "اسم المريض", "upload": "تحميل المسح", "process": "تشغيل التحليل",
+        "roi": "تحليلات الأعمال", "partner": "تسجيل شريك", "feedback": "الملاحظات"
+    },
+    "Portuguese (Português)": {
+        "title": "EyeCare AI Hub Pro",
+        "home": "Início / Painel",
+        "hub": "Clínica Digital", "portal": "Portal do Médico", "opt": "Assistente Óptico",
+        "name": "Nome do Paciente", "upload": "Carregar Scan", "process": "Iniciar Análise",
+        "roi": "Análise de Negócios", "partner": "Registro de Parceiro", "feedback": "Comentários"
     }
 }
 
@@ -293,12 +330,12 @@ with st.sidebar.expander("📱 Mobile Ecosystem", expanded=False):
         st.toast("Request Sent!")
 
 # NAVIGATION
-nav_options = ["🏠 Home / Dashboard", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", "🤝 Partner Network", "💬 Feedback"]
+nav_options = [f"🏠 {t['home']}", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", f"🤝 {t['partner']}", f"💬 {t['feedback']}"]
 if 'menu_index' not in st.session_state: st.session_state.menu_index = 0
 menu = st.sidebar.radio("Main Navigation", nav_options, index=st.session_state.menu_index)
 if nav_options.index(menu) != st.session_state.menu_index: st.session_state.menu_index = nav_options.index(menu)
 
-if menu == "🏠 Home / Dashboard":
+if t['home'] in menu:
     st.markdown(f"<h1 class='main-header'>Welcome to {t['title']}</h1>", unsafe_allow_html=True)
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -428,12 +465,14 @@ elif t['opt'] in menu:
         pd, img = get_pd(file.getvalue(), face_cascade, eye_cascade)
         if img is not None: st.image(img, use_container_width=True); st.metric("Detected PD", f"{pd} mm")
 
-elif "Partner" in menu:
+elif t['partner'] in menu:
+    st.markdown(f"<h1 class='main-header'>🤝 {t['partner']}</h1>", unsafe_allow_html=True)
     with st.form("partner_reg"):
         n = st.text_input("Clinic Name"); c = st.text_input("Contact")
         if st.form_submit_button("Join Network"): save_partner(n, "Accra", c); st.success("Sent!")
 
-elif "Feedback" in menu:
+elif t['feedback'] in menu:
+    st.markdown(f"<h1 class='main-header'>💬 {t['feedback']}</h1>", unsafe_allow_html=True)
     with st.form("feedback"):
         u = st.text_input("Name"); r = st.slider("Rating", 1, 10, 8)
         if st.form_submit_button("Submit"): save_feedback(u, r, "Nice"); st.success("Recorded!")
