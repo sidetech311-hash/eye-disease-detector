@@ -24,6 +24,7 @@ LANG = {
         "title": "EyeCare AI Hub Pro",
         "home": "Home / Dashboard",
         "hub": "Digital Clinic", "portal": "Physician Portal", "opt": "Optical Assistant",
+        "patient": "Patient Portal", "search_id": "Enter Patient ID", "lookup": "Find Result",
         "name": "Patient Name", "upload": "Upload Retinal Scan", "process": "Run Analysis",
         "roi": "Business Analytics", "partner": "Partner Registration", "feedback": "Feedback"
     },
@@ -31,6 +32,7 @@ LANG = {
         "title": "EyeCare AI Hub Pro",
         "home": "Fie / Dwumadie",
         "hub": "Ayaresabea", "portal": "Dɔkota Mpanyinfoɔ", "opt": "Ani nkrataa",
+        "patient": "Ayarefoɔ Bea", "search_id": "Kyerɛ Ayarefoɔ ID", "lookup": "Hunu m'ayaresa",
         "name": "Ayarefoɔ Din", "upload": "Fa Mfonini Ma AI", "process": "Hwɛ Mu",
         "roi": "Sika ne Mpuntuo", "partner": "Kyerɛ wo din", "feedback": "Kyerɛ wo nneyɛe"
     },
@@ -38,6 +40,7 @@ LANG = {
         "title": "EyeCare AI Hub Pro",
         "home": "Accueil / Tableau de bord",
         "hub": "Clinique Digitale", "portal": "Portail Médecin", "opt": "Assistant Optique",
+        "patient": "Portail Patient", "search_id": "Entrer l'ID du Patient", "lookup": "Trouver Résultat",
         "name": "Nom du Patient", "upload": "Télécharger le Scan", "process": "Lancer l'Analyse",
         "roi": "Analyses Commerciales", "partner": "Inscription Partenaire", "feedback": "Commentaires"
     },
@@ -45,6 +48,7 @@ LANG = {
         "title": "EyeCare AI Hub Pro",
         "home": "Inicio / Tablero",
         "hub": "Clínica Digital", "portal": "Portal del Médico", "opt": "Asistente Óptico",
+        "patient": "Portal del Paciente", "search_id": "Ingrese ID del Paciente", "lookup": "Buscar Resultado",
         "name": "Nombre del Paciente", "upload": "Cargar Escaneo", "process": "Ejecutar Análisis",
         "roi": "Análisis de Negocios", "partner": "Registro de Socios", "feedback": "Comentarios"
     },
@@ -52,6 +56,7 @@ LANG = {
         "title": "EyeCare AI Hub Pro",
         "home": "Shia / Nitsumɔ",
         "hub": "Hehelɔ", "portal": "Tsofatse Kwɛlɔ", "opt": "Ani Akwataa",
+        "patient": "Ayarefoɔ Bea", "search_id": "Wo Ayarefoɔ ID", "lookup": "Hunu m'ayaresa",
         "name": "Gbeyei Gbɛi", "upload": "Wo Mfoniri", "process": "Kpaa Mli",
         "roi": "Shika Gbɛjianɔto", "partner": "Kyerɛ wo din", "feedback": "Gbeyei sane"
     },
@@ -59,6 +64,7 @@ LANG = {
         "title": "EyeCare AI Hub Pro",
         "home": "الرئيسية / لوحة القيادة",
         "hub": "العيادة الرقمية", "portal": "بوابة الطبيب", "opt": "المساعد البصري",
+        "patient": "بوابة المريض", "search_id": "أدخل معرف المريض", "lookup": "بحث عن نتيجة",
         "name": "اسم المريض", "upload": "تحميل المسح", "process": "تشغيل التحليل",
         "roi": "تحليلات الأعمال", "partner": "تسجيل شريك", "feedback": "الملاحظات"
     },
@@ -66,6 +72,7 @@ LANG = {
         "title": "EyeCare AI Hub Pro",
         "home": "Início / Painel",
         "hub": "Clínica Digital", "portal": "Portal do Médico", "opt": "Assistente Óptico",
+        "patient": "Portal do Paciente", "search_id": "Inserir ID do Paciente", "lookup": "Buscar Resultado",
         "name": "Nome do Paciente", "upload": "Carregar Scan", "process": "Iniciar Análise",
         "roi": "Análise de Negócios", "partner": "Registro de Parceiro", "feedback": "Comentários"
     }
@@ -350,7 +357,7 @@ with st.sidebar.expander("📱 Mobile Ecosystem", expanded=False):
         st.toast("Request Sent!")
 
 # NAVIGATION
-nav_options = [f"🏠 {t['home']}", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", f"🤝 {t['partner']}", f"💬 {t['feedback']}"]
+nav_options = [f"🏠 {t['home']}", f"🔬 {t['hub']}", f"📊 {t['portal']}", f"🕶️ {t['opt']}", f"👤 {t['patient']}", f"🤝 {t['partner']}", f"💬 {t['feedback']}"]
 if 'menu_index' not in st.session_state: st.session_state.menu_index = 0
 menu = st.sidebar.radio("Main Navigation", nav_options, index=st.session_state.menu_index)
 if nav_options.index(menu) != st.session_state.menu_index: st.session_state.menu_index = nav_options.index(menu)
@@ -484,6 +491,24 @@ elif t['opt'] in menu:
     if file:
         pd, img = get_pd(file.getvalue(), face_cascade, eye_cascade)
         if img is not None: st.image(img, use_container_width=True); st.metric("Detected PD", f"{pd} mm")
+
+elif t['patient'] in menu:
+    st.markdown(f"<h1 class='main-header'>👤 {t['patient']}</h1>", unsafe_allow_html=True)
+    st.write(f"{t['search_id']} to download your official clinical report.")
+    patient_id = st.text_input("ID #", placeholder="e.g. Patient #a1b2c")
+    if st.button(t['lookup'], use_container_width=True):
+        conn = sqlite3.connect('clinical_records.db')
+        df = pd.read_sql('SELECT * FROM screenings WHERE pid=?', conn, params=(patient_id,))
+        conn.close()
+        if not df.empty:
+            res = df.iloc[0]
+            st.success(f"Result Found for {patient_id}")
+            st.markdown(f"**Diagnosis**: {res['condition']}")
+            st.markdown(f"**Date**: {res['date']}")
+            pdf_bytes = create_pdf_report(patient_id, res['condition'], res['confidence'])
+            st.download_button("📥 Download My Official Report (PDF)", data=pdf_bytes, file_name=f"Report_{patient_id}.pdf", mime="application/pdf", use_container_width=True)
+        else:
+            st.error("No record found for this ID. Please contact your clinician.")
 
 elif t['partner'] in menu:
     st.markdown(f"<h1 class='main-header'>🤝 {t['partner']}</h1>", unsafe_allow_html=True)
