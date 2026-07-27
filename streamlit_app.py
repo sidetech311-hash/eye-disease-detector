@@ -185,40 +185,52 @@ def create_pdf_report(patient_name, diagnosis, confidence):
 # --- 🧠 AI ENGINE ---
 @st.cache_resource
 def load_clinical_brain():
+    # Defensive Download Logic for Cloud Environments
     if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 10000:
         if os.path.exists(MODEL_PATH): os.remove(MODEL_PATH)
         try:
-            r = requests.get(MODEL_URL, stream=True)
+            r = requests.get(MODEL_URL, stream=True, timeout=30)
             r.raise_for_status()
             total_size = int(r.headers.get('content-length', 0))
-            block_size = 1024 * 8
+            block_size = 1024 * 16 # Faster block size
             progress_bar = st.progress(0)
             downloaded = 0
             with open(MODEL_PATH, "wb") as f:
                 for chunk in r.iter_content(chunk_size=block_size):
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0:
-                        progress_bar.progress(min(downloaded / total_size, 1.0))
-            st.success("✅ AI Brain Ready.")
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            progress_bar.progress(min(downloaded / total_size, 1.0))
+            st.success("✅ AI Brain Downloaded.")
         except Exception as e:
-            st.error(f"Download Error: {e}")
+            st.error(f"📡 Cloud Connectivity Error: {e}. Please ensure the model URL is public.")
             return None, [], None
+
     try:
+        # Resolve class names
         c_path = 'class_names.json'
         if not os.path.exists(c_path): c_path = os.path.join(os.path.dirname(__file__), '..', 'class_names.json')
-        if not os.path.exists(c_path): return None, [], None
+        if not os.path.exists(c_path): 
+            st.error("❌ 'class_names.json' missing from repository.")
+            return None, [], None
         with open(c_path, 'r') as f: classes = json.load(f)
+
+        # Load with strict Keras 2 compatibility
         model = load_model(MODEL_PATH, compile=False)
+        
+        # Build Grad-CAM model logic
         grad_model = None
         for layer in reversed(model.layers):
             try:
                 grad_model = tf.keras.models.Model(model.inputs, [layer.output, model.output])
                 break
             except: continue
+
         return model, classes, grad_model
     except Exception as e:
         st.error(f"🧠 Brain Load Failure: {e}")
+        # Clean up broken model file to avoid infinite retry loops
         if os.path.exists(MODEL_PATH): os.remove(MODEL_PATH)
         return None, [], None
 

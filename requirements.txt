@@ -1,8 +1,5 @@
-tensorflow-cpu~=2.15.0
-tf-keras~=2.15.0
-fastapi
-uvicorn
-python-multipart
+tensorflow-cpu
+tf-keras
 numpy<2.0.0
 pillow
 pandas
@@ -10,3 +7,7 @@ streamlit
 fpdf
 opencv-python-headless
 requests
+fastapi
+uvicorn
+python-multipart
+firebase-admin
