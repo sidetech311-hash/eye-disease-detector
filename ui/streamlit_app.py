@@ -324,6 +324,14 @@ st.sidebar.markdown("---")
 if model: st.sidebar.success("🟢 System Online")
 else: st.sidebar.warning("🟡 System Initializing...")
 
+# --- PRO SHARE CENTER ---
+with st.sidebar.expander("📢 Share Hub", expanded=False):
+    share_msg = "Check out EyeCare AI Hub Pro - The future of retinal screening in Ghana! 👁️🇬🇭"
+    # Note: Use your actual shortened streamlit URL here
+    app_url = "https://eye-disease-detector.streamlit.app"
+    st.markdown(f"[![WhatsApp](https://img.shields.io/badge/WhatsApp-Share-25D366?style=for-the-badge&logo=whatsapp)](https://api.whatsapp.com/send?text={share_msg}%20{app_url})")
+    st.markdown(f"[![LinkedIn](https://img.shields.io/badge/LinkedIn-Share-0077B5?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/sharing/share-offsite/?url={app_url})")
+
 with st.sidebar.expander("📱 Mobile Ecosystem", expanded=False):
     st.write("Native Android/iOS apps available.")
     if st.button("📲 Request Mobile APK (Beta)", use_container_width=True):
