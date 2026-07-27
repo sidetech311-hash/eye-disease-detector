@@ -71,7 +71,7 @@ LANG = {
     }
 }
 
-RENDER_API_URL = "https://eye-disease-detector-1.onrender.com/analyze/"
+RENDER_API_URL = "https://eye-disease-detector-2.onrender.com/analyze/"
 
 st.set_page_config(page_title="EyeCare AI Pro", layout="wide", page_icon="👁️")
 
