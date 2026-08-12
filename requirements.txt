@@ -1,5 +1,5 @@
-tensorflow-cpu
-tf-keras
+tensorflow-cpu==2.15.1
+tf-keras==2.15.1
 numpy<2.0.0
 pillow
 pandas

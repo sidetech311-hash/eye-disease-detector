@@ -1,11 +1,7 @@
 import streamlit as st
 import numpy as np
 import tensorflow as tf
-try:
-    import tf_keras as keras
-except ImportError:
-    from tensorflow import keras
-from keras.models import load_model
+import tf_keras
 import cv2
 import json
 import os
@@ -223,14 +219,14 @@ def load_clinical_brain():
             return None, [], None
         with open(c_path, 'r') as f: classes = json.load(f)
 
-        # Load with strict Keras 2 compatibility
-        model = load_model(MODEL_PATH, compile=False)
+        # Use tf_keras for strict Keras 2.0 compatibility
+        model = tf_keras.models.load_model(MODEL_PATH, compile=False)
         
         # Build Grad-CAM model logic
         grad_model = None
         for layer in reversed(model.layers):
             try:
-                grad_model = tf.keras.models.Model(model.inputs, [layer.output, model.output])
+                grad_model = tf_keras.models.Model(model.inputs, [layer.output, model.output])
                 break
             except: continue
 
