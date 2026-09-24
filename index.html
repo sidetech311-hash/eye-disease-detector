@@ -60,7 +60,7 @@
             <!-- Loading State -->
             <div id="loading" class="hidden text-center py-8">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-cyan-500 border-t-transparent"></div>
-                <p class="text-sm text-slate-400 mt-3">Analyzing retinal features with EfficientNet...</p>
+                <p id="loadingText" class="text-sm text-slate-400 mt-3">Waking up cloud AI server & analyzing scan (takes ~20s on first load)...</p>
             </div>
 
             <!-- Results Card -->
@@ -116,11 +116,17 @@
             document.getElementById('loading').classList.remove('hidden');
             document.getElementById('resultCard').classList.add('hidden');
 
+            // 60-second timeout controller for cold starts
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
             try {
                 const response = await fetch(`${apiUrl}/analyze/`, {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
                 const data = await response.json();
 
                 if (response.ok) {
@@ -131,7 +137,11 @@
                     alert('Error: ' + (data.detail || 'Analysis failed'));
                 }
             } catch (err) {
-                alert('Failed to connect to backend API. Make sure Render is awake.');
+                if (err.name === 'AbortError') {
+                    alert('Request timed out. Render may still be spinning up. Please try again in 15 seconds.');
+                } else {
+                    alert('Failed to connect to backend API. Make sure Render is awake.');
+                }
             } finally {
                 document.getElementById('loading').classList.add('hidden');
             }
