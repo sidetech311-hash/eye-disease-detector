@@ -21,7 +21,7 @@ app.add_middleware(
 )
 
 MODEL_PATH = "retinal_final_boss.h5"
-MODEL_URL = "https://www.dropbox.com/scl/fi/ruipg8kbuu435c0l73rfp/retinal_disease_model_v2.h5?rlkey=alk3qd9neodv1dehflhej0fcy&st=48evd1oe&dl=1"
+MODEL_URL = "https://www.dropbox.com/scl/fi/ruipg8kbuu435c0l73rfp/retinal_disease_model_v2.h5?rlkey=alk3qd9neodv1dehflhej0fcy&st=o71mrala&dl=1"
 
 def download_model():
     if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 10000:
