@@ -53,6 +53,8 @@ async def analyze_eye(file: UploadFile = File(...)):
         return {"condition": classes[idx].title(), "confidence": f"{float(preds[0][idx]):.2%}"}
     finally:
         if os.path.exists(temp_path): os.remove(temp_path)
+        import gc
+        gc.collect()
 
 @app.get("/")
 def home():
