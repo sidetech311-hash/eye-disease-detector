@@ -116,9 +116,9 @@
             document.getElementById('loading').classList.remove('hidden');
             document.getElementById('resultCard').classList.add('hidden');
 
-            // 60-second timeout controller for cold starts
+            // 120-second timeout controller for cold starts
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 60000);
+            const timeoutId = setTimeout(() => controller.abort(), 120000);
 
             try {
                 const response = await fetch(`${apiUrl}/analyze/`, {
